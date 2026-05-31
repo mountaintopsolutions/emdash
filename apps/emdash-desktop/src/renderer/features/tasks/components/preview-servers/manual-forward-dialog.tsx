@@ -73,7 +73,7 @@ export function ManualForwardDialog({ onClose }: { onClose: () => void }) {
         </DialogHeader>
         <DialogContentArea>
           <DialogDescription>
-            Create an SSH tunnel from a remote dev server port to a local preview URL.
+            Forward a remote dev server port to a local preview URL.
           </DialogDescription>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[120px_1fr]">
             <Label htmlFor="preview-protocol" className="self-center">

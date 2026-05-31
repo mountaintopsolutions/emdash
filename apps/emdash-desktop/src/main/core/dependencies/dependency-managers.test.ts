@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const instances: Array<{
+    ctx: unknown;
+    options: unknown;
     get: ReturnType<typeof vi.fn>;
     probeCategory: ReturnType<typeof vi.fn>;
     onExecutableInvalidated: { subscribe: ReturnType<typeof vi.fn> };
@@ -24,7 +26,10 @@ const mocks = vi.hoisted(() => {
       this.states.set('codex', { id: 'codex', category: 'agent' });
     }
 
-    constructor() {
+    constructor(
+      public ctx: unknown,
+      public options: unknown
+    ) {
       instances.push(this);
     }
   }
@@ -34,10 +39,13 @@ const mocks = vi.hoisted(() => {
     FakeHostDependencyManager,
     attach: vi.fn(),
     clearResolvedPathCache: vi.fn(),
-    connect: vi.fn(),
+    sshConnect: vi.fn(),
+    kubeConnect: vi.fn(),
     getSelection: vi.fn(),
+    limit: vi.fn(),
     createLocalInstallCommandRunner: vi.fn(() => vi.fn()),
     createSshInstallCommandRunner: vi.fn(() => vi.fn()),
+    createK8sInstallCommandRunner: vi.fn(() => vi.fn()),
   };
 });
 
@@ -61,6 +69,14 @@ vi.mock('@main/core/execution-context/ssh-execution-context', () => ({
   },
 }));
 
+vi.mock('@main/core/execution-context/k8s-execution-context', () => ({
+  K8sExecutionContext: class {
+    async exec() {
+      return { stdout: 'Linux\n', stderr: '' };
+    }
+  },
+}));
+
 vi.mock('@main/core/settings/settings-service', () => ({
   appSettingsService: {
     get: vi.fn(async () => ({ defaultShell: null })),
@@ -69,12 +85,30 @@ vi.mock('@main/core/settings/settings-service', () => ({
 
 vi.mock('@main/core/ssh/lifecycle/production-ssh-connection-manager', () => ({
   sshConnectionManager: {
-    connect: mocks.connect,
+    connect: mocks.sshConnect,
+  },
+}));
+
+vi.mock('@main/core/k8s/lifecycle/production-kube-connection-manager', () => ({
+  kubeConnectionManager: {
+    connect: mocks.kubeConnect,
   },
 }));
 
 vi.mock('@main/core/terminal-shell/resolver', () => ({
   resolveLocalAutomationShellWithSystemFallback: vi.fn(async () => ({ shell: '/bin/sh' })),
+}));
+
+vi.mock('@main/db/client', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: mocks.limit,
+        }),
+      }),
+    }),
+  },
 }));
 
 vi.mock('@main/lib/logger', () => ({
@@ -98,6 +132,7 @@ vi.mock('./host-dependency-store', () => ({
 vi.mock('./install-runner', () => ({
   createLocalInstallCommandRunner: mocks.createLocalInstallCommandRunner,
   createSshInstallCommandRunner: mocks.createSshInstallCommandRunner,
+  createK8sInstallCommandRunner: mocks.createK8sInstallCommandRunner,
 }));
 
 vi.mock('./registry', () => ({
@@ -118,6 +153,10 @@ describe('ensureAgentDependenciesProbed', () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.instances.length = 0;
+    // Default: connection ids are not k8s, so getDependencyManager uses SSH.
+    mocks.limit.mockResolvedValue([]);
+    mocks.sshConnect.mockResolvedValue({});
+    mocks.kubeConnect.mockResolvedValue({});
   });
 
   it('deduplicates concurrent first-use probes for the same host', async () => {
@@ -165,7 +204,6 @@ describe('ensureAgentDependenciesProbed', () => {
     await expect(getDependencyManager()).resolves.toBe(localManager);
     expect(localManager.probeCategory).not.toHaveBeenCalled();
 
-    mocks.connect.mockResolvedValue({});
     const remoteManager = await getDependencyManager('ssh-1');
     expect(remoteManager.probeCategory).not.toHaveBeenCalled();
 
@@ -178,7 +216,7 @@ describe('ensureAgentDependenciesProbed', () => {
   it('deduplicates concurrent remote manager creation', async () => {
     const { getDependencyManager } = await import('./dependency-managers');
     let resolveConnect: ((proxy: unknown) => void) | undefined;
-    mocks.connect.mockReturnValue(
+    mocks.sshConnect.mockReturnValue(
       new Promise((resolve) => {
         resolveConnect = resolve;
       })
@@ -187,8 +225,9 @@ describe('ensureAgentDependenciesProbed', () => {
     const first = getDependencyManager('ssh-1');
     const second = getDependencyManager('ssh-1');
     await Promise.resolve();
+    await Promise.resolve();
 
-    expect(mocks.connect).toHaveBeenCalledTimes(1);
+    expect(mocks.sshConnect).toHaveBeenCalledTimes(1);
 
     if (!resolveConnect) throw new Error('Connect did not start');
     resolveConnect({});
@@ -202,7 +241,6 @@ describe('ensureAgentDependenciesProbed', () => {
   it('does not share in-flight probes across manager instances', async () => {
     const { clearDependencyManager, ensureAgentDependenciesProbed, getDependencyManager } =
       await import('./dependency-managers');
-    mocks.connect.mockResolvedValue({});
 
     const firstManager = await getDependencyManager('ssh-1');
     const firstFakeManager = mocks.instances[1]!;
@@ -241,20 +279,18 @@ describe('ensureAgentDependenciesProbed', () => {
 
   it('clears cached remote managers explicitly', async () => {
     const { clearDependencyManager, getDependencyManager } = await import('./dependency-managers');
-    mocks.connect.mockResolvedValue({});
 
     const first = await getDependencyManager('ssh-1');
     clearDependencyManager('ssh-1');
     const second = await getDependencyManager('ssh-1');
 
     expect(second).not.toBe(first);
-    expect(mocks.connect).toHaveBeenCalledTimes(2);
+    expect(mocks.sshConnect).toHaveBeenCalledTimes(2);
   });
 
   it('keeps in-flight probes deduped for a manager after cache clear', async () => {
     const { clearDependencyManager, ensureAgentDependenciesProbed, getDependencyManager } =
       await import('./dependency-managers');
-    mocks.connect.mockResolvedValue({});
     const manager = await getDependencyManager('ssh-1');
     const fakeManager = mocks.instances[1]!;
     let resolveProbe: (() => void) | undefined;
@@ -277,50 +313,63 @@ describe('ensureAgentDependenciesProbed', () => {
     resolveProbe();
     await Promise.all([first, second]);
   });
+});
 
-  it('does not cache a remote manager cleared during creation', async () => {
-    const { clearDependencyManager, getDependencyManager } = await import('./dependency-managers');
-    let resolveConnect: ((proxy: unknown) => void) | undefined;
-    mocks.connect.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveConnect = resolve;
-      })
-    );
-
-    const pending = getDependencyManager('ssh-1');
-    await Promise.resolve();
-    clearDependencyManager('ssh-1');
-
-    if (!resolveConnect) throw new Error('Connect did not start');
-    resolveConnect({});
-    const clearedManager = await pending;
-
-    mocks.connect.mockResolvedValue({});
-    const nextManager = await getDependencyManager('ssh-1');
-
-    expect(nextManager).not.toBe(clearedManager);
-    expect(mocks.connect).toHaveBeenCalledTimes(2);
+describe('getDependencyManager transport dispatch', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.instances.length = 0;
+    mocks.sshConnect.mockResolvedValue({});
+    mocks.kubeConnect.mockResolvedValue({});
+    mocks.limit.mockReset();
   });
 
-  it('does not wire desktop bridges for a remote manager cleared during creation', async () => {
-    const { clearDependencyManager, getDependencyManager } = await import('./dependency-managers');
-    let resolveConnect: ((proxy: unknown) => void) | undefined;
-    mocks.connect.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveConnect = resolve;
-      })
-    );
+  it('returns the local manager when no connection id is provided', async () => {
+    const { getDependencyManager } = await import('./dependency-managers');
+    const localManager = mocks.instances[0]!;
 
-    const pending = getDependencyManager('ssh-1');
-    await Promise.resolve();
-    clearDependencyManager('ssh-1');
+    const mgr = await getDependencyManager();
 
-    if (!resolveConnect) throw new Error('Connect did not start');
-    resolveConnect({});
-    const clearedManager = await pending;
+    expect(mgr).toBe(localManager);
+    expect(mocks.limit).not.toHaveBeenCalled();
+  });
 
-    expect(clearedManager).toBe(mocks.instances[1]);
-    expect(mocks.attach).not.toHaveBeenCalledWith(clearedManager, 'ssh-1');
-    expect(clearedManager.onExecutableInvalidated.subscribe).not.toHaveBeenCalled();
+  it('uses the k8s transport when the connection id matches a k8s connection', async () => {
+    mocks.limit.mockResolvedValue([{ id: 'k8s-1' }]);
+    const { getDependencyManager } = await import('./dependency-managers');
+
+    const mgr = await getDependencyManager('k8s-1');
+
+    expect(mgr).toBe(mocks.instances[1]);
+    expect(mocks.kubeConnect).toHaveBeenCalledWith('k8s-1');
+    expect(mocks.sshConnect).not.toHaveBeenCalled();
+    // The k8s install-runner path is taken for k8s connections.
+    expect(mocks.createK8sInstallCommandRunner).toHaveBeenCalledTimes(1);
+    expect(mocks.createSshInstallCommandRunner).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the ssh transport when no k8s connection matches', async () => {
+    mocks.limit.mockResolvedValue([]);
+    const { getDependencyManager } = await import('./dependency-managers');
+
+    const mgr = await getDependencyManager('ssh-1');
+
+    expect(mgr).toBe(mocks.instances[1]);
+    expect(mocks.sshConnect).toHaveBeenCalledWith('ssh-1');
+    expect(mocks.kubeConnect).not.toHaveBeenCalled();
+    expect(mocks.createSshInstallCommandRunner).toHaveBeenCalledTimes(1);
+    expect(mocks.createK8sInstallCommandRunner).not.toHaveBeenCalled();
+  });
+
+  it('caches the manager per connection id', async () => {
+    mocks.limit.mockResolvedValue([{ id: 'k8s-cache' }]);
+    const { getDependencyManager } = await import('./dependency-managers');
+
+    const first = await getDependencyManager('k8s-cache');
+    const second = await getDependencyManager('k8s-cache');
+
+    expect(first).toBe(second);
+    expect(mocks.kubeConnect).toHaveBeenCalledTimes(1);
   });
 });

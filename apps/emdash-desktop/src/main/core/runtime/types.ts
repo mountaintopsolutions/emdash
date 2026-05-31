@@ -1,7 +1,10 @@
 import type { IGitRuntime } from '@emdash/core/git';
 import type { IDisposable, Lease, Unsubscribe } from '@emdash/shared';
 
-export type MachineRef = { kind: 'local' } | { kind: 'ssh'; connectionId: string };
+export type MachineRef =
+  | { kind: 'local' }
+  | { kind: 'ssh'; connectionId: string }
+  | { kind: 'k8s'; connectionId: string };
 
 export type RuntimeHealth =
   | { status: 'ok' }
@@ -24,5 +27,12 @@ export interface RuntimeManager {
 }
 
 export function machineKey(machine: MachineRef): string {
-  return machine.kind === 'local' ? 'local' : `ssh:${machine.connectionId}`;
+  switch (machine.kind) {
+    case 'local':
+      return 'local';
+    case 'ssh':
+      return `ssh:${machine.connectionId}`;
+    case 'k8s':
+      return `k8s:${machine.connectionId}`;
+  }
 }

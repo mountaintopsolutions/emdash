@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { K8sConnectionSelector } from '@renderer/features/projects/components/add-project-modal/k8s-connection-selector';
 import { SshConnectionSelector } from '@renderer/features/projects/components/add-project-modal/ssh-connection-selector';
-import { getProjectManagerStore } from '@renderer/features/projects/stores/project-selectors';
+import {
+  getProjectManagerStore,
+  getProjectStore,
+} from '@renderer/features/projects/stores/project-selectors';
 import { useShowModal, type BaseModalProps } from '@renderer/lib/modal/modal-provider';
 import { appState } from '@renderer/lib/stores/app-state';
 import { Button } from '@renderer/lib/ui/button';
@@ -28,14 +32,19 @@ export function ChangeProjectConnectionModal({
   const [selectedConnectionId, setSelectedConnectionId] = useState(currentConnectionId);
   const [isSaving, setIsSaving] = useState(false);
 
+  const transport = getProjectStore(projectId)?.data?.type === 'k8s' ? 'k8s' : 'ssh';
+  const isK8s = transport === 'k8s';
+  const label = isK8s ? 'Kubernetes' : 'SSH';
+
   const showSshConnModal = useShowModal('addSshConnModal');
+  const showK8sConnModal = useShowModal('addK8sConnModal');
+  const showAddConnModal = isK8s ? showK8sConnModal : showSshConnModal;
   const showChangeConnectionModal = useShowModal('changeProjectConnectionModal');
 
   const handleAddConnection = () => {
-    showSshConnModal({
-      onSuccess: (result: unknown) => {
-        const newId = (result as { connectionId: string }).connectionId;
-        showChangeConnectionModal({ projectId, currentConnectionId: newId });
+    showAddConnModal({
+      onSuccess: (result: { connectionId: string }) => {
+        showChangeConnectionModal({ projectId, currentConnectionId: result.connectionId });
       },
       onClose: () => {
         showChangeConnectionModal({ projectId, currentConnectionId: selectedConnectionId });
@@ -44,17 +53,16 @@ export function ChangeProjectConnectionModal({
   };
 
   const handleEditConnection = (id: string) => {
-    const conn = appState.sshConnections.connections.find((c) => c.id === id);
-    if (!conn) return;
-    showSshConnModal({
-      initialConfig: conn,
-      onSuccess: () => {
-        showChangeConnectionModal({ projectId, currentConnectionId: id });
-      },
-      onClose: () => {
-        showChangeConnectionModal({ projectId, currentConnectionId: id });
-      },
-    });
+    const reopen = () => showChangeConnectionModal({ projectId, currentConnectionId: id });
+    if (isK8s) {
+      const conn = appState.k8sConnections.connections.find((c) => c.id === id);
+      if (!conn) return;
+      showK8sConnModal({ initialConfig: conn, onSuccess: reopen, onClose: reopen });
+    } else {
+      const conn = appState.sshConnections.connections.find((c) => c.id === id);
+      if (!conn) return;
+      showSshConnModal({ initialConfig: conn, onSuccess: reopen, onClose: reopen });
+    }
   };
 
   const handleSave = async () => {
@@ -75,7 +83,7 @@ export function ChangeProjectConnectionModal({
     <ModalLayout
       header={
         <DialogHeader>
-          <DialogTitle>Change SSH Connection</DialogTitle>
+          <DialogTitle>Change {label} Connection</DialogTitle>
         </DialogHeader>
       }
       footer={
@@ -94,13 +102,22 @@ export function ChangeProjectConnectionModal({
     >
       <DialogContentArea>
         <Field>
-          <FieldLabel>SSH Connection</FieldLabel>
-          <SshConnectionSelector
-            connectionId={selectedConnectionId}
-            onConnectionIdChange={setSelectedConnectionId}
-            onAddConnection={handleAddConnection}
-            onEditConnection={handleEditConnection}
-          />
+          <FieldLabel>{label} Connection</FieldLabel>
+          {isK8s ? (
+            <K8sConnectionSelector
+              connectionId={selectedConnectionId}
+              onConnectionIdChange={setSelectedConnectionId}
+              onAddConnection={handleAddConnection}
+              onEditConnection={handleEditConnection}
+            />
+          ) : (
+            <SshConnectionSelector
+              connectionId={selectedConnectionId}
+              onConnectionIdChange={setSelectedConnectionId}
+              onAddConnection={handleAddConnection}
+              onEditConnection={handleEditConnection}
+            />
+          )}
         </Field>
       </DialogContentArea>
     </ModalLayout>

@@ -19,6 +19,9 @@ export async function openProject(
     if (project.type === 'ssh') {
       return err({ type: 'ssh-disconnected', connectionId: project.connectionId });
     }
+    if (project.type === 'k8s') {
+      return err({ type: 'pod-not-running', connectionId: project.connectionId });
+    }
     return err({ type: 'error', message: result.error.message });
   }
 

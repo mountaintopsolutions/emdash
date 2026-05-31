@@ -3,12 +3,13 @@ import type { IDisposable } from '@emdash/shared';
 import { HookCore, type Hookable } from '@main/lib/hookable';
 import { LifecycleMap } from '@main/lib/lifecycle-map';
 import { log } from '@main/lib/logger';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { K8sProject, LocalProject, SshProject } from '@shared/projects';
 import { createProvider } from './create-project-provider';
 import type { ProjectProvider } from './project-provider';
 import { TimeoutSignal, withTimeout } from './utils';
 
 const SSH_PROVIDER_TIMEOUT_MS = 60_000;
+const K8S_PROVIDER_TIMEOUT_MS = 60_000;
 const LOCAL_PROVIDER_TIMEOUT_MS = 20_000;
 const TEARDOWN_PROVIDER_TIMEOUT_MS = 60_000;
 
@@ -49,13 +50,17 @@ class ProjectSessionManager implements Hookable<ProjectSessionManagerHooks>, IDi
   }
 
   async openProject(
-    project: LocalProject | SshProject
+    project: LocalProject | SshProject | K8sProject
   ): Promise<Result<ProjectProvider, ProviderLifecycleError>> {
     return this._lifecycle.provision(project.id, async () => {
       try {
         const provider = await withTimeout(
           createProvider(project),
-          project.type === 'ssh' ? SSH_PROVIDER_TIMEOUT_MS : LOCAL_PROVIDER_TIMEOUT_MS
+          project.type === 'ssh'
+            ? SSH_PROVIDER_TIMEOUT_MS
+            : project.type === 'k8s'
+              ? K8S_PROVIDER_TIMEOUT_MS
+              : LOCAL_PROVIDER_TIMEOUT_MS
         );
         return ok(provider);
       } catch (e) {

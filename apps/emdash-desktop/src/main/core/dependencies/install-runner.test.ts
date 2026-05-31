@@ -4,6 +4,7 @@ import type { Pty } from '@main/core/pty/pty';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
 import {
   classifyInstallCommandFailure,
+  createK8sInstallCommandRunner,
   createLocalInstallCommandRunner,
   createSshInstallCommandRunner,
   runLocalInstallCommand,
@@ -11,12 +12,17 @@ import {
 
 const mocks = vi.hoisted(() => ({
   openSsh2Pty: vi.fn(),
+  openK8sPty: vi.fn(),
   spawnLocalPty: vi.fn(),
   ensureUserBinDirsInPath: vi.fn(),
 }));
 
 vi.mock('@main/core/pty/ssh2-pty', () => ({
   openSsh2Pty: mocks.openSsh2Pty,
+}));
+
+vi.mock('@main/core/pty/k8s-pty', () => ({
+  openK8sPty: mocks.openK8sPty,
 }));
 
 vi.mock('@main/core/pty/local-pty', () => ({
@@ -72,6 +78,7 @@ const pwshProfile: ResolvedShellProfile = {
 beforeEach(() => {
   mocks.spawnLocalPty.mockReturnValue(createSuccessfulPty());
   mocks.openSsh2Pty.mockResolvedValue({ success: true, data: createSuccessfulPty() });
+  mocks.openK8sPty.mockResolvedValue({ success: true, data: createSuccessfulPty() });
 });
 
 afterEach(() => {
@@ -187,5 +194,49 @@ describe('createSshInstallCommandRunner', () => {
           "'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; npm install -g @anthropic-ai/claude-code'",
       })
     );
+  });
+});
+
+describe('createK8sInstallCommandRunner', () => {
+  it('runs in-pod installs through the captured remote shell profile', async () => {
+    const proxy = {
+      getRemoteShellProfile: vi.fn(async () => ({
+        shell: '/bin/zsh',
+        env: {
+          PATH: '/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin',
+        },
+      })),
+    };
+    const runner = createK8sInstallCommandRunner(proxy as never);
+
+    const result = await runner('npm install -g @anthropic-ai/claude-code');
+
+    expect(result.success).toBe(true);
+    expect(proxy.getRemoteShellProfile).toHaveBeenCalledWith();
+    expect(mocks.openK8sPty).toHaveBeenCalledWith(
+      proxy,
+      expect.objectContaining({
+        command:
+          "'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; npm install -g @anthropic-ai/claude-code'",
+      })
+    );
+  });
+
+  it('returns a pty-open-failed error when the exec session cannot be opened', async () => {
+    mocks.openK8sPty.mockResolvedValueOnce({
+      success: false,
+      error: { kind: 'channel-open-failed', message: 'pod gone' },
+    });
+    const proxy = {
+      getRemoteShellProfile: vi.fn(async () => ({ shell: '/bin/sh', env: {} })),
+    };
+    const runner = createK8sInstallCommandRunner(proxy as never);
+
+    const result = await runner('npm install -g @openai/codex');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toEqual({ type: 'pty-open-failed', message: 'pod gone' });
+    }
   });
 });

@@ -125,6 +125,8 @@ export const ProjectTitlebar = observer(function ProjectTitlebar() {
   const mounted = asMounted(store);
   if (!mounted) return <Titlebar leftSlot={<ProjectTitlebarLeft projectId={projectId} />} />;
 
+  const isRemote = mounted.data.type === 'ssh' || mounted.data.type === 'k8s';
+
   return (
     <Titlebar
       leftSlot={<MountedProjectTitlebarLeft projectId={projectId} />}
@@ -133,7 +135,7 @@ export const ProjectTitlebar = observer(function ProjectTitlebar() {
           <OpenInMenu
             path={mounted.data.path}
             className="h-7 bg-background"
-            isRemote={mounted.data.type === 'ssh'}
+            isRemote={isRemote}
             sshConnectionId={mounted.data.type === 'ssh' ? mounted.data.connectionId : undefined}
           />
         </div>

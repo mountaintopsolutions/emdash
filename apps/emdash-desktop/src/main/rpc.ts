@@ -16,6 +16,7 @@ import { githubController } from './core/github/controller';
 import { gitlabController } from './core/gitlab/controller';
 import { issueController } from './core/issues/controller';
 import { jiraController } from './core/jira/controller';
+import { k8sController } from './core/k8s/controller';
 import { linearController } from './core/linear/controller';
 import { mcpController } from './core/mcp/controller';
 import { mondayController } from './core/monday/controller';
@@ -71,6 +72,7 @@ export const rpcRouter = createRPCRouter({
   skills: skillsController,
   ssh: sshController,
   projectSetup: projectSetupController,
+  k8s: k8sController,
   projects: projectController,
   previewServers: previewServersController,
   tasks: taskController,

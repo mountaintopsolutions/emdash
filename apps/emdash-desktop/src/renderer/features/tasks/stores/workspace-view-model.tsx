@@ -294,7 +294,8 @@ export class WorkspaceViewModel implements ILifecycle {
     this.previewServers = new PreviewServerStore({
       projectId: taskData.projectId,
       workspaceId,
-      connectionId: workspace.sshConnectionId,
+      connectionId: workspace.remoteConnectionId,
+      transport: workspace.remoteConnection?.kind,
     });
     this.previewServers.start();
     this.prStore = new PrStore(

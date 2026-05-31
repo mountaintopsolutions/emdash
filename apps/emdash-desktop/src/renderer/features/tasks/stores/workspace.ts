@@ -7,10 +7,13 @@ import { FilesStore } from '../editor/stores/files-store';
 import { GitWorktreeStore } from './git-worktree-store';
 import { LifecycleScriptsStore } from './lifecycle-scripts';
 
+/** Identifies the remote transport backing a workspace, if any. */
+export type RemoteConnection = { kind: 'ssh' | 'k8s'; id: string };
+
 export class WorkspaceStore implements ILifecycle {
   readonly path: string;
   readonly gitRepository: GitRepositoryStore;
-  readonly sshConnectionId: string | undefined;
+  readonly remoteConnection: RemoteConnection | undefined;
   readonly gitWorktree: GitWorktreeStore;
   readonly files: FilesStore;
   readonly lifecycleScripts: LifecycleScriptsStore;
@@ -20,25 +23,35 @@ export class WorkspaceStore implements ILifecycle {
     workspaceId: string,
     path: string,
     gitRepository: GitRepositoryStore,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ) {
     makeObservable(this, { connectionState: computed });
     this.path = path;
-    this.sshConnectionId = sshConnectionId;
+    this.remoteConnection = remoteConnection;
     this.gitRepository = gitRepository;
     this.gitWorktree = new GitWorktreeStore(projectId, workspaceId, this.gitRepository);
     this.files = new FilesStore(projectId, workspaceId);
     this.lifecycleScripts = new LifecycleScriptsStore(projectId, workspaceId);
   }
 
+  /** The remote connection id regardless of transport, or undefined when local. */
+  get remoteConnectionId(): string | undefined {
+    return this.remoteConnection?.id;
+  }
+
+  private get connectionStore() {
+    if (!this.remoteConnection) return null;
+    return this.remoteConnection.kind === 'k8s' ? appState.k8sConnections : appState.sshConnections;
+  }
+
   get connectionState(): ConnectionState | null {
-    if (!this.sshConnectionId) return null;
-    return appState.sshConnections.stateFor(this.sshConnectionId);
+    if (!this.remoteConnection) return null;
+    return this.connectionStore?.stateFor(this.remoteConnection.id) ?? null;
   }
 
   reconnect(): void {
-    if (this.sshConnectionId) {
-      void appState.sshConnections.connect(this.sshConnectionId).catch(() => {});
+    if (this.remoteConnection) {
+      void this.connectionStore?.connect(this.remoteConnection.id).catch(() => {});
     }
   }
 

@@ -1,7 +1,7 @@
 import { observable } from 'mobx';
 import type { GitRepositoryStore } from '@renderer/features/projects/stores/git-repository-store';
 import type { WorkspaceResolution } from '@shared/core/workspaces/workspaces';
-import { WorkspaceStore } from './workspace';
+import { type RemoteConnection, WorkspaceStore } from './workspace';
 
 export type WorkspaceBootstrapState =
   | { kind: 'pending' }
@@ -30,7 +30,7 @@ export class WorkspaceRegistryStore {
     workspaceId: string,
     path: string,
     gitRepository: GitRepositoryStore,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ): WorkspaceStore {
     const key = makeKey(projectId, workspaceId);
     const existing = this.entries.get(key);
@@ -39,7 +39,7 @@ export class WorkspaceRegistryStore {
       return existing.store;
     }
 
-    const store = new WorkspaceStore(projectId, workspaceId, path, gitRepository, sshConnectionId);
+    const store = new WorkspaceStore(projectId, workspaceId, path, gitRepository, remoteConnection);
     this.entries.set(key, { store, refCount: 1, activated: false });
     return store;
   }

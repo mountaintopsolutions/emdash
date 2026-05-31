@@ -32,6 +32,7 @@ export type ProvisionResult = {
     workspaceId: string;
     workspaceProviderData?: WorkspaceProviderData;
     sshConnectionId?: string;
+    k8sConnectionId?: string;
     worktreeGitDir?: string;
   };
 };

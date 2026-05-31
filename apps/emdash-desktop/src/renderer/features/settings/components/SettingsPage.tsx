@@ -8,6 +8,7 @@ import { BrowserSettingsCard } from './BrowserSettingsCard';
 import HiddenToolsSettingsCard from './HiddenToolsSettingsCard';
 import IntegrationsCard from './IntegrationsCard';
 import InterfaceSettingsCard from './InterfaceSettingsCard';
+import { K8sConnectionsSettingsCard } from './K8sConnectionsSettingsCard';
 import KeyboardSettingsCard from './KeyboardSettingsCard';
 import NotificationSettingsCard from './NotificationSettingsCard';
 import RepositorySettingsCard from './RepositorySettingsCard';
@@ -89,9 +90,10 @@ function ConnectionsSettingsPage() {
       <PageHeader
         sticky
         title="Connections"
-        description="Manage reusable SSH connections for remote projects."
+        description="Manage reusable SSH and Kubernetes connections for remote projects."
       />
       <SshConnectionsSettingsCard />
+      <K8sConnectionsSettingsCard />
     </div>
   );
 }

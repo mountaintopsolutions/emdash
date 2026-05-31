@@ -1,7 +1,7 @@
 import { CheckCheckIcon, ChevronDownIcon, PlusIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { usePromptLibrary } from '@renderer/features/library/prompts/use-prompt-library';
-import { getProjectSshConnectionId } from '@renderer/features/projects/stores/project-selectors';
+import { getProjectConnectionId } from '@renderer/features/projects/stores/project-selectors';
 import { AgentSelector } from '@renderer/lib/components/agent-selector/agent-selector';
 import { useAgents } from '@renderer/lib/stores/use-agents';
 import { Button } from '@renderer/lib/ui/button';
@@ -54,7 +54,7 @@ export function useInitialConversationState(
   options: InitialConversationStateOptions = {}
 ): InitialConversationState {
   const { resetPromptOnProjectChange = true } = options;
-  const connectionId = projectId ? getProjectSshConnectionId(projectId) : undefined;
+  const connectionId = projectId ? getProjectConnectionId(projectId) : undefined;
   const { providerId, setProviderOverride } = useEffectiveProvider(connectionId, initialProvider);
   const [prompt, setPrompt] = useState('');
   const [issueContext, setIssueContext] = useState<string | null>(null);

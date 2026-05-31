@@ -46,6 +46,7 @@ const gitSetupSchema = z.discriminatedUnion('kind', [
 const workspaceLocationSchema = z.discriminatedUnion('host', [
   z.object({ host: z.literal('local'), path: z.string().optional() }),
   z.object({ host: z.literal('project-ssh'), path: z.string().optional() }),
+  z.object({ host: z.literal('project-k8s'), path: z.string().optional() }),
   z.object({ host: z.literal('byoi'), remoteWorkspaceId: z.string().optional() }),
 ]);
 

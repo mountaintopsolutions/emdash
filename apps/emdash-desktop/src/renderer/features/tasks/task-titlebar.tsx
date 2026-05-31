@@ -132,7 +132,7 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
 
   if (!taskStore || !taskPayload) return null;
 
-  const isRemoteProject = projectStore?.data.type === 'ssh';
+  const isRemoteProject = projectStore?.data.type === 'ssh' || projectStore?.data.type === 'k8s';
   return (
     <Titlebar
       leftSlot={
@@ -317,7 +317,9 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
             className="h-7 bg-transparent"
             borderless
             isRemote={isRemoteProject}
-            sshConnectionId={workspace.sshConnectionId}
+            sshConnectionId={
+              workspace.remoteConnection?.kind === 'ssh' ? workspace.remoteConnection.id : undefined
+            }
           />
           <Separator orientation="vertical" className="h-5 self-center!" />
           <Tooltip>

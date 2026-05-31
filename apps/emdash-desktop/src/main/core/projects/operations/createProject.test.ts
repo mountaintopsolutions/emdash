@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Result } from '@emdash/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createK8sProject, getK8sProjectPathStatus } from './create-k8s-project';
 import { createLocalProject, getLocalProjectPathStatus } from './create-local-project';
 import { createSshProject, getSshProjectPathStatus } from './create-ssh-project';
 
@@ -22,6 +23,8 @@ const mocks = vi.hoisted(() => ({
   returningMock: vi.fn(),
   sshConnectMock: vi.fn(),
   sshStatMock: vi.fn(),
+  k8sConnectMock: vi.fn(),
+  k8sStatMock: vi.fn(),
 }));
 
 vi.mock('@main/core/runtime/runtime-manager', () => ({
@@ -41,6 +44,20 @@ vi.mock('@main/core/fs/impl/ssh-fs', () => ({
 vi.mock('@main/core/ssh/lifecycle/production-ssh-connection-manager', () => ({
   sshConnectionManager: {
     connect: mocks.sshConnectMock,
+  },
+}));
+
+vi.mock('@main/core/fs/impl/k8s-fs', () => ({
+  K8sFileSystem: vi.fn(function MockK8sFileSystem() {
+    return {
+      stat: mocks.k8sStatMock,
+    };
+  }),
+}));
+
+vi.mock('@main/core/k8s/lifecycle/production-kube-connection-manager', () => ({
+  kubeConnectionManager: {
+    connect: mocks.k8sConnectMock,
   },
 }));
 
@@ -100,6 +117,8 @@ beforeEach(() => {
   mocks.repoGetDefaultBranchMock.mockResolvedValue('main');
   mocks.sshConnectMock.mockResolvedValue({ id: 'ssh-proxy' });
   mocks.sshStatMock.mockResolvedValue({ path: '', type: 'dir' });
+  mocks.k8sConnectMock.mockResolvedValue({ id: 'k8s-proxy' });
+  mocks.k8sStatMock.mockResolvedValue({ path: '', type: 'dir' });
 });
 
 describe('createLocalProject', () => {
@@ -561,6 +580,171 @@ describe('getSshProjectPathStatus', () => {
       isGitRepo: false,
       error: { type: 'inspect-failed', path: projectPath, message: 'Permission denied' },
     });
+    expect(mocks.inspectPathMock).toHaveBeenCalledWith(projectPath);
+  });
+});
+
+describe('createK8sProject', () => {
+  const projectPath = '/pod/worktree';
+  const row = {
+    id: 'project-id',
+    name: 'Project',
+    path: '/pod/repo-root',
+    baseRef: 'main',
+    createdAt: '2026-04-16T00:00:00.000Z',
+    updatedAt: '2026-04-16T00:00:00.000Z',
+    k8sConnectionId: 'connection-id',
+  };
+
+  it('initializes git when the selected in-pod folder is not yet a repository', async () => {
+    mocks.ensureRepositoryMock.mockResolvedValueOnce({
+      success: true,
+      data: { kind: 'repository', rootPath: row.path, baseRef: 'main' },
+    });
+    mocks.returningMock.mockResolvedValue([row]);
+
+    const created = expectOk(
+      await createK8sProject({
+        id: 'project-id',
+        name: 'Project',
+        path: projectPath,
+        connectionId: 'connection-id',
+        initGitRepository: true,
+      })
+    );
+
+    expect(mocks.k8sStatMock).toHaveBeenCalledWith('');
+    expect(mocks.acquireRuntimeMock).toHaveBeenCalledWith({
+      kind: 'k8s',
+      connectionId: 'connection-id',
+    });
+    expect(mocks.ensureRepositoryMock).toHaveBeenCalledWith(projectPath, {
+      initIfMissing: true,
+    });
+    expect(mocks.valuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceProvider: 'k8s', k8sConnectionId: 'connection-id' })
+    );
+    expect(created).toMatchObject({
+      id: 'project-id',
+      name: 'Project',
+      path: row.path,
+      baseRef: 'main',
+      type: 'k8s',
+      connectionId: 'connection-id',
+    });
+    expect(mocks.openProjectMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'project-id',
+        type: 'k8s',
+      })
+    );
+  });
+
+  it('rejects non-git in-pod directories unless initialization is explicitly enabled', async () => {
+    mocks.ensureRepositoryMock.mockResolvedValueOnce({
+      success: false,
+      error: { type: 'not-repository', path: projectPath },
+    });
+
+    await expect(
+      createK8sProject({
+        id: 'project-id',
+        name: 'Project',
+        path: projectPath,
+        connectionId: 'connection-id',
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: {
+        type: 'not-repository',
+        path: projectPath,
+      },
+    });
+
+    expect(mocks.ensureRepositoryMock).toHaveBeenCalledWith(projectPath, {
+      initIfMissing: false,
+    });
+  });
+
+  it('rejects invalid in-pod directories', async () => {
+    mocks.k8sStatMock.mockResolvedValueOnce(null);
+
+    await expect(
+      createK8sProject({
+        id: 'project-id',
+        name: 'Project',
+        path: projectPath,
+        connectionId: 'connection-id',
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: { type: 'invalid-directory', path: projectPath, message: 'Invalid directory' },
+    });
+
+    expect(mocks.ensureRepositoryMock).not.toHaveBeenCalled();
+  });
+
+  it('stores the git remote default branch as the k8s project baseRef', async () => {
+    const rowWithDefault = {
+      ...row,
+      baseRef: 'origin/main',
+    };
+
+    mocks.ensureRepositoryMock.mockResolvedValueOnce({
+      success: true,
+      data: { kind: 'repository', rootPath: row.path, baseRef: 'origin/feature/current' },
+    });
+    mocks.repoGetDefaultBranchMock.mockResolvedValue('main');
+    mocks.repoGetRefsMock.mockResolvedValue({
+      branches: [
+        {
+          type: 'remote',
+          branch: 'main',
+          remote: { name: 'origin', url: 'git@github.com:example/repo.git' },
+          oid: '1111111111111111111111111111111111111111',
+        },
+      ],
+    });
+    mocks.returningMock.mockResolvedValue([rowWithDefault]);
+
+    const created = expectOk(
+      await createK8sProject({
+        id: 'project-id',
+        name: 'Project',
+        path: projectPath,
+        connectionId: 'connection-id',
+      })
+    );
+
+    expect(mocks.valuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ baseRef: 'origin/main' })
+    );
+    expect(created.baseRef).toBe('origin/main');
+  });
+});
+
+describe('getK8sProjectPathStatus', () => {
+  const projectPath = '/pod/worktree';
+
+  it('returns invalid status when the in-pod directory does not exist', async () => {
+    mocks.k8sStatMock.mockResolvedValueOnce(null);
+
+    const status = await getK8sProjectPathStatus(projectPath, 'connection-id');
+
+    expect(status).toEqual({ isDirectory: false, isGitRepo: false });
+    expect(mocks.inspectPathMock).not.toHaveBeenCalled();
+  });
+
+  it('returns git status for existing in-pod directories', async () => {
+    mocks.inspectPathMock.mockResolvedValueOnce({
+      kind: 'repository',
+      rootPath: '/pod/repo-root',
+      baseRef: 'origin/main',
+    });
+
+    const status = await getK8sProjectPathStatus(projectPath, 'connection-id');
+
+    expect(status).toEqual({ isDirectory: true, isGitRepo: true });
     expect(mocks.inspectPathMock).toHaveBeenCalledWith(projectPath);
   });
 });

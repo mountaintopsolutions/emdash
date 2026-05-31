@@ -1,7 +1,16 @@
 import { Check } from 'lucide-react';
 import { cn } from '@renderer/utils/utils';
-import { type LegacyImportSource, type LegacyProjectConflict } from '@shared/legacy-port';
+import {
+  type LegacyImportSource,
+  type LegacyProjectConflict,
+  type ProjectIdentityKind,
+} from '@shared/legacy-port';
 import { formatCount, sourceLabel } from './import-format';
+
+const PROJECT_KIND_LABEL: Record<ProjectIdentityKind, string> = {
+  local: 'Local',
+  ssh: 'SSH',
+};
 
 function ConflictChoice({
   source,
@@ -59,7 +68,7 @@ function ConflictCard({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <span className="truncate text-sm font-medium">{conflict.v1Beta.name}</span>
         <span className="shrink-0 text-xs text-foreground-muted">
-          {conflict.kind === 'ssh' ? 'SSH' : 'Local'}
+          {PROJECT_KIND_LABEL[conflict.kind]}
         </span>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -64,4 +64,5 @@ export const taskProvisionedChannel = defineEvent<{
   path: string;
   workspaceId: string;
   sshConnectionId?: string;
+  k8sConnectionId?: string;
 }>('task:provisioned');

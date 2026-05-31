@@ -12,6 +12,7 @@ import type {
   TaskLifecycleStatus,
 } from '@shared/core/tasks/tasks';
 import { conversationRegistry } from './conversation-registry';
+import type { RemoteConnection } from './workspace';
 import { workspaceRegistry } from './workspace-registry';
 import { WorkspaceViewModel } from './workspace-view-model';
 
@@ -102,11 +103,11 @@ export class TaskStore {
     path: string,
     workspaceId: string,
     gitRepository: GitRepositoryStore,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ): void {
     this.data = data;
     this.ensureRegisteredStores();
-    workspaceRegistry.acquire(data.projectId, workspaceId, path, gitRepository, sshConnectionId);
+    workspaceRegistry.acquire(data.projectId, workspaceId, path, gitRepository, remoteConnection);
     this.workspaceId = workspaceId;
     this.state = 'provisioned';
     this.phase = null;

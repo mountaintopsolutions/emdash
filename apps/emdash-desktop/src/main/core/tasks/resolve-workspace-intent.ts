@@ -87,7 +87,12 @@ function workspaceTargetToLocation(
   if (target.kind === 'repository-instance') return null;
   if (target.kind === 'byoi') return { host: 'byoi' };
   // 'new-worktree' — derive host from the legacy workspace type column.
-  const host = workspaceType === 'project-ssh' ? 'project-ssh' : 'local';
+  const host =
+    workspaceType === 'project-ssh'
+      ? 'project-ssh'
+      : workspaceType === 'project-k8s'
+        ? 'project-k8s'
+        : 'local';
   return { host };
 }
 
@@ -101,7 +106,12 @@ function inferLegacyIntent(taskRow: TaskRow, workspaceRow: WorkspaceRow): Worksp
     };
   }
 
-  const host = workspaceRow.type === 'project-ssh' ? 'project-ssh' : 'local';
+  const host =
+    workspaceRow.type === 'project-ssh'
+      ? 'project-ssh'
+      : workspaceRow.type === 'project-k8s'
+        ? 'project-k8s'
+        : 'local';
 
   // If a path is already stored, the workspace exists at that location.
   if (workspaceRow.path) {

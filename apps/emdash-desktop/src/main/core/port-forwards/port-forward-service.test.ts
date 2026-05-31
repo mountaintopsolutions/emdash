@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import { PortForwardService } from './port-forward-service';
 
-function fakeProxy(): Pick<SshClientProxy, 'client' | 'isConnected'> {
+function sshTarget(): { transport: 'ssh'; proxy: Pick<SshClientProxy, 'client' | 'isConnected'> } {
   return {
-    isConnected: true,
-    get client() {
-      return {} as SshClientProxy['client'];
+    transport: 'ssh',
+    proxy: {
+      isConnected: true,
+      get client() {
+        return {} as SshClientProxy['client'];
+      },
     },
   };
 }
@@ -23,7 +26,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
-      proxy: fakeProxy(),
+      ...sshTarget(),
       remotePort: 5173,
     });
     const second = await service.open({
@@ -31,7 +34,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
-      proxy: fakeProxy(),
+      ...sshTarget(),
       remotePort: 5173,
     });
 
@@ -58,7 +61,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
-      proxy: fakeProxy(),
+      ...sshTarget(),
       remotePort: 5173,
     });
     await service.open({
@@ -66,7 +69,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-2',
       connectionId: 'ssh-1',
-      proxy: fakeProxy(),
+      ...sshTarget(),
       remotePort: 5174,
     });
 

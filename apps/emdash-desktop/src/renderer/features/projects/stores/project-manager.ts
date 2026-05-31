@@ -6,7 +6,13 @@ import { viewStateCache } from '@renderer/lib/stores/view-state-cache';
 import { log } from '@renderer/utils/logger';
 import { captureTelemetry } from '@renderer/utils/telemetryClient';
 import { sshConnectionEventChannel } from '@shared/core/ssh/sshEvents';
-import { type LocalProject, type SshProject } from '@shared/projects';
+import { k8sConnectionEventChannel } from '@shared/events/k8sEvents';
+import {
+  type CreateProjectResult,
+  type K8sProject,
+  type Project,
+  type SshProject,
+} from '@shared/projects';
 import { splitNameWithOwner } from '@shared/repository-ref';
 import type { ProjectViewSnapshot } from '@shared/view-state';
 import {
@@ -47,6 +53,20 @@ export class ProjectManagerStore {
     this._disposeSshConnectionEvent = events.on(sshConnectionEventChannel, (event) => {
       if (event.type !== 'connected' && event.type !== 'reconnected') return;
       this._mountDisconnectedSshProjects(event.connectionId);
+    });
+
+    events.on(k8sConnectionEventChannel, (event) => {
+      if (event.type !== 'connected' && event.type !== 'reconnected') return;
+      for (const [projectId, store] of this.projects) {
+        if (
+          isUnmountedProject(store) &&
+          store.phase === 'error' &&
+          store.data.type === 'k8s' &&
+          store.data.connectionId === event.connectionId
+        ) {
+          this.mountProject(projectId).catch(() => {});
+        }
+      }
     });
 
     globalThis.window?.addEventListener('online', this._handleOnline);
@@ -97,13 +117,14 @@ export class ProjectManagerStore {
     data: ModeData,
     options: StartProjectCreationOptions = {}
   ): Promise<StartProjectCreationResult> {
-    const isSsh = projectType.type === 'ssh';
     const projectId = options.id ?? crypto.randomUUID();
     const targetPath = data.mode === 'pick' ? data.path : `${data.path}/${data.name}`;
     const inspection = await rpc.projects.inspectProjectPath(
-      isSsh
+      projectType.type === 'ssh'
         ? { type: 'ssh', path: targetPath, connectionId: projectType.connectionId }
-        : { type: 'local', path: targetPath }
+        : projectType.type === 'k8s'
+          ? { type: 'k8s', path: targetPath, connectionId: projectType.connectionId }
+          : { type: 'local', path: targetPath }
     );
     if (inspection.existingProject) {
       return { kind: 'existing', projectId: inspection.existingProject.id };
@@ -132,32 +153,50 @@ export class ProjectManagerStore {
     projectId: string,
     targetPath: string
   ): Promise<ProjectCreationCompletion> {
-    const isSsh = projectType.type === 'ssh';
-    const projectTelemetryType: 'local' | 'ssh' = isSsh ? 'ssh' : 'local';
+    const projectTelemetryType: 'local' | 'ssh' | 'k8s' = projectType.type;
     const projectTelemetryStrategy: 'open' | 'create' | 'clone' =
       data.mode === 'clone' ? 'clone' : data.mode === 'new' ? 'create' : 'open';
+
+    const createProjectForMode = (
+      name: string,
+      initGitRepository?: boolean
+    ): Promise<CreateProjectResult> => {
+      const initFields = initGitRepository !== undefined ? { initGitRepository } : {};
+      switch (projectType.type) {
+        case 'ssh':
+          return rpc.projects.createProject({
+            type: 'ssh',
+            id: projectId,
+            path: targetPath,
+            name,
+            connectionId: projectType.connectionId,
+            ...initFields,
+          });
+        case 'k8s':
+          return rpc.projects.createProject({
+            type: 'k8s',
+            id: projectId,
+            path: targetPath,
+            name,
+            connectionId: projectType.connectionId,
+            ...initFields,
+          });
+        case 'local':
+          return rpc.projects.createProject({
+            type: 'local',
+            id: projectId,
+            path: targetPath,
+            name,
+            ...initFields,
+          });
+      }
+    };
 
     let result: ProjectCreationCompletion;
     try {
       switch (data.mode) {
         case 'pick': {
-          const projectResult =
-            projectType.type === 'ssh'
-              ? await rpc.projects.createProject({
-                  type: 'ssh',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  connectionId: projectType.connectionId,
-                  initGitRepository: data.initGitRepository,
-                })
-              : await rpc.projects.createProject({
-                  type: 'local',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  initGitRepository: data.initGitRepository,
-                });
+          const projectResult = await createProjectForMode(data.name, data.initGitRepository);
           if (!projectResult.success) {
             result = err(projectResult.error);
             break;
@@ -173,7 +212,10 @@ export class ProjectManagerStore {
         }
 
         case 'clone': {
-          const connectionId = projectType.type === 'ssh' ? projectType.connectionId : undefined;
+          const connectionId =
+            projectType.type === 'ssh' || projectType.type === 'k8s'
+              ? projectType.connectionId
+              : undefined;
           const cloneResult = await rpc.projectSetup.cloneRepository(
             data.repositoryUrl,
             targetPath,
@@ -188,21 +230,7 @@ export class ProjectManagerStore {
           }
 
           this._updatePhase(projectId, 'registering');
-          const projectResult =
-            projectType.type === 'ssh'
-              ? await rpc.projects.createProject({
-                  type: 'ssh',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  connectionId: projectType.connectionId,
-                })
-              : await rpc.projects.createProject({
-                  type: 'local',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                });
+          const projectResult = await createProjectForMode(data.name);
           if (!projectResult.success) {
             result = err(projectResult.error);
             break;
@@ -304,6 +332,12 @@ export class ProjectManagerStore {
               } else if (openResult.error.type === 'ssh-disconnected') {
                 current.error = openResult.error.connectionId;
                 current.errorCode = 'ssh-disconnected';
+              } else if (
+                openResult.error.type === 'pod-not-running' ||
+                openResult.error.type === 'pod-gone'
+              ) {
+                current.error = openResult.error.connectionId;
+                current.errorCode = undefined;
               } else {
                 current.error = openResult.error.message;
                 current.errorCode = undefined;
@@ -432,13 +466,14 @@ export class ProjectManagerStore {
     await rpc.projects.updateProjectConnection(projectId, newConnectionId);
 
     const store = this.projects.get(projectId);
-    if (!store || !store.data || store.data.type !== 'ssh') return;
+    if (!store || !store.data || (store.data.type !== 'ssh' && store.data.type !== 'k8s')) return;
 
-    const newData: SshProject = { ...store.data, connectionId: newConnectionId };
+    const newData: SshProject | K8sProject = { ...store.data, connectionId: newConnectionId };
 
     runInAction(() => {
       const current = this.projects.get(projectId);
-      if (!current || !current.data || current.data.type !== 'ssh') return;
+      if (!current || !current.data || (current.data.type !== 'ssh' && current.data.type !== 'k8s'))
+        return;
       if (isMountedProject(current)) {
         current.transitionToUnmounted(newData, 'opening');
       } else if (isUnmountedProject(current)) {
@@ -465,7 +500,7 @@ export class ProjectManagerStore {
     });
   }
 
-  private _setAndOpenProject(id: string, project: LocalProject | SshProject): void {
+  private _setAndOpenProject(id: string, project: Project): void {
     runInAction(() => {
       const current = this.projects.get(id);
       if (current) {
@@ -525,11 +560,13 @@ export class ProjectManagerStore {
     cloneUrl: string;
     repositoryNameWithOwner: string;
     githubAccountId?: string;
-  }): Promise<Result<LocalProject | SshProject, ProjectCreationError>> {
+  }): Promise<Result<Project, ProjectCreationError>> {
     const connectionId =
-      opts.projectType.type === 'ssh' ? opts.projectType.connectionId : undefined;
+      opts.projectType.type === 'ssh' || opts.projectType.type === 'k8s'
+        ? opts.projectType.connectionId
+        : undefined;
 
-    let result: Result<LocalProject | SshProject, ProjectCreationError>;
+    let result: Result<Project, ProjectCreationError>;
     try {
       this._updatePhase(opts.projectId, 'cloning');
       const cloneResult = await rpc.projectSetup.cloneRepository(
@@ -564,12 +601,20 @@ export class ProjectManagerStore {
                   name: opts.name,
                   connectionId: opts.projectType.connectionId,
                 })
-              : await rpc.projects.createProject({
-                  type: 'local',
-                  id: opts.projectId,
-                  path: opts.targetPath,
-                  name: opts.name,
-                });
+              : opts.projectType.type === 'k8s'
+                ? await rpc.projects.createProject({
+                    type: 'k8s',
+                    id: opts.projectId,
+                    path: opts.targetPath,
+                    name: opts.name,
+                    connectionId: opts.projectType.connectionId,
+                  })
+                : await rpc.projects.createProject({
+                    type: 'local',
+                    id: opts.projectId,
+                    path: opts.targetPath,
+                    name: opts.name,
+                  });
         }
       }
     } catch (error) {

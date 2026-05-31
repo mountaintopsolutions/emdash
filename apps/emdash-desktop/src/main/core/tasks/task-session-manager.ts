@@ -113,6 +113,7 @@ class TaskSessionManager {
       persistData: {
         workspaceId: result.workspaceId,
         sshConnectionId: result.sshConnectionId,
+        k8sConnectionId: result.k8sConnectionId,
         worktreeGitDir: result.worktreeGitDir,
         workspaceProviderData: result.workspaceProviderData as WorkspaceProviderData | undefined,
       },

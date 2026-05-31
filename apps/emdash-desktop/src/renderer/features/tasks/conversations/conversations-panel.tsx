@@ -26,7 +26,7 @@ export const ConversationsPanel = observer(function ConversationsPanel() {
   const { value: interfaceSettings } = useAppSettingsKey('interface');
   const { groupId, tabManager: tm } = useTabGroupContext();
   const isActive = useIsActiveTask(taskId);
-  const remoteConnectionId = workspace.sshConnectionId;
+  const remoteConnectionId = workspace.remoteConnectionId;
 
   const autoFocus = isActive && taskView.focusedRegion === 'main';
 

@@ -6,7 +6,7 @@ import { PreviewServerPill } from './preview-server-pill';
 export const PreviewServerPills = observer(function PreviewServerPills() {
   const previews = usePreviewServers();
   const workspace = useWorkspace();
-  const isRemoteWorkspace = Boolean(workspace.sshConnectionId);
+  const isRemoteWorkspace = Boolean(workspace.remoteConnectionId);
   const servers = previews.servers;
 
   if (servers.length === 0 && !isRemoteWorkspace) return null;

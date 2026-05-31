@@ -4,7 +4,7 @@ import { computeWorkspaceKey } from '@main/core/workspaces/workspace-key';
 import { db } from '@main/db/client';
 import { projects, workspaces } from '@main/db/schema';
 import { log } from '@main/lib/logger';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { K8sProject, LocalProject, SshProject } from '@shared/projects';
 
 /**
  * Ensures the project has a `project-root` workspace row and sets
@@ -17,7 +17,7 @@ import type { LocalProject, SshProject } from '@shared/projects';
  * Called from `createLocalProject`/`createSshProject` (so the returned project
  * already carries the ID) and from `openProject` (for pre-migration rows).
  */
-export function ensureRepositoryWorkspace(project: LocalProject | SshProject): string {
+export function ensureRepositoryWorkspace(project: LocalProject | SshProject | K8sProject): string {
   const [row] = db
     .select({ repositoryWorkspaceId: projects.repositoryWorkspaceId })
     .from(projects)
@@ -30,10 +30,12 @@ export function ensureRepositoryWorkspace(project: LocalProject | SshProject): s
   }
 
   const workspaceId = randomUUID();
-  const location = project.type === 'ssh' ? 'remote' : 'local';
+  const location = project.type === 'ssh' || project.type === 'k8s' ? 'remote' : 'local';
   const sshConnectionId = project.type === 'ssh' ? project.connectionId : null;
-  const legacyType = project.type === 'ssh' ? 'project-ssh' : 'local';
-  const key = computeWorkspaceKey(legacyType, project.path, sshConnectionId ?? undefined);
+  const legacyType =
+    project.type === 'ssh' ? 'project-ssh' : project.type === 'k8s' ? 'project-k8s' : 'local';
+  const connectionKey = project.type === 'k8s' ? project.connectionId : sshConnectionId;
+  const key = computeWorkspaceKey(legacyType, project.path, connectionKey ?? undefined);
 
   return db.transaction((tx) => {
     // Re-check inside the transaction to avoid races.

@@ -12,12 +12,12 @@ import {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mocks = vi.hoisted(() => ({
-  getProjectSshConnectionId: vi.fn(),
+  getProjectConnectionId: vi.fn(),
   setProviderOverride: vi.fn(),
 }));
 
 vi.mock('@renderer/features/projects/stores/project-selectors', () => ({
-  getProjectSshConnectionId: mocks.getProjectSshConnectionId,
+  getProjectConnectionId: mocks.getProjectConnectionId,
 }));
 
 vi.mock('@renderer/features/library/prompts/use-prompt-library', () => ({
@@ -74,7 +74,7 @@ describe('useInitialConversationState', () => {
 
   beforeEach(() => {
     latestState = undefined;
-    mocks.getProjectSshConnectionId.mockReturnValue(undefined);
+    mocks.getProjectConnectionId.mockReturnValue(undefined);
 
     dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

@@ -1,5 +1,6 @@
 import { ProjectManagerStore } from '@renderer/features/projects/stores/project-manager';
 import { SidebarStore } from '@renderer/features/sidebar/sidebar-store';
+import { K8sConnectionStore } from './k8s-connection-store';
 import { NavigationHistoryStore } from './navigation-history-store';
 import { NavigationStore } from './navigation-store';
 import { ResourceMonitorStore } from './resource-monitor-store';
@@ -15,6 +16,7 @@ class AppState {
   readonly history: NavigationHistoryStore;
   readonly navigation: NavigationStore;
   readonly sshConnections: SshConnectionStore;
+  readonly k8sConnections: K8sConnectionStore;
   readonly resourceMonitor: ResourceMonitorStore;
 
   constructor() {
@@ -30,10 +32,17 @@ class AppState {
         // via the useAgentInstallationStatuses hook. No explicit refresh needed here.
       },
     });
+    this.k8sConnections = new K8sConnectionStore({
+      onConnectionReady: (_connectionId) => {
+        // Agent installation statuses for k8s connections are fetched on-demand
+        // via the useAgentInstallationStatuses hook. No explicit refresh needed here.
+      },
+    });
     this.resourceMonitor = new ResourceMonitorStore();
     snapshotRegistry.register('navigation', () => this.navigation.snapshot);
     snapshotRegistry.register('sidebar', () => this.sidebar.snapshot);
     this.sshConnections.start();
+    this.k8sConnections.start();
   }
 }
 
