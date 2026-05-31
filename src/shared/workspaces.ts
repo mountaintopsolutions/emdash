@@ -1,4 +1,4 @@
-export type WorkspaceType = 'local' | 'project-ssh' | 'byoi';
+export type WorkspaceType = 'local' | 'project-ssh' | 'project-k8s' | 'byoi';
 
 export type WorkspaceResolution =
   | { kind: 'ready' }

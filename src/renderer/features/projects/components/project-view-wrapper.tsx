@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ProjectK8sHealthGate } from './project-k8s-health-gate';
 import { ProjectSshHealthGate } from './project-ssh-health-gate';
 
 interface ProjectViewWrapperProps {
@@ -7,5 +8,9 @@ interface ProjectViewWrapperProps {
 }
 
 export function ProjectViewWrapper({ children, projectId }: ProjectViewWrapperProps) {
-  return <ProjectSshHealthGate projectId={projectId}>{children}</ProjectSshHealthGate>;
+  return (
+    <ProjectSshHealthGate projectId={projectId}>
+      <ProjectK8sHealthGate projectId={projectId}>{children}</ProjectK8sHealthGate>
+    </ProjectSshHealthGate>
+  );
 }

@@ -14,6 +14,11 @@ vi.mock('@renderer/lib/ipc', () => ({
       getConnectionState: async () => ({}),
       getHealthStates: async () => ({}),
     },
+    k8s: {
+      getConnections: async () => [],
+      getConnectionState: async () => ({}),
+      getHealthStates: async () => ({}),
+    },
   },
 }));
 

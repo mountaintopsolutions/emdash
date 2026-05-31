@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RemoteShellProfile } from '@main/core/ssh/lifecycle/remote-shell-profile';
+import type { RemoteShellProfile } from '@main/core/execution-context/remote-shell-profile';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
 import type { AgentSessionConfig } from '@shared/agent-session';
 import type { GeneralSessionConfig } from '@shared/general-session';
-import { resolveSshCommand } from './spawn-utils';
+import { resolveK8sCommand, resolveSshCommand } from './spawn-utils';
 
 function makeAgentConfig(overrides: Partial<AgentSessionConfig> = {}): AgentSessionConfig {
   return {
@@ -193,6 +193,125 @@ describe('resolveSshCommand', () => {
 
   it('escapes history expansion for csh-family remote argv commands', () => {
     const result = resolveSshCommand(
+      'agent',
+      makeAgentConfig({
+        command: 'printf',
+        args: ['hello!'],
+      }),
+      undefined,
+      tcshRemoteProfile
+    );
+
+    expect(result).toContain("'/usr/bin/env' 'PATH=/usr/bin' 'tcsh' -c");
+    expect(result).toContain("'\\''hello\\!'\\''");
+  });
+});
+
+describe('resolveK8sCommand', () => {
+  it('runs in-pod commands through a login shell so PATH matches install/probe', () => {
+    const result = resolveK8sCommand('agent', makeAgentConfig(), undefined, zshProfile);
+
+    expect(result).toBe(
+      `'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; cd "/workspace" && '\\''claude'\\'' '\\''--resume'\\'' '\\''conv-1'\\'''`
+    );
+  });
+
+  it('adds env exports before the in-pod command', () => {
+    const result = resolveK8sCommand(
+      'agent',
+      makeAgentConfig(),
+      {
+        FOO: 'bar',
+      },
+      zshProfile
+    );
+
+    expect(result).toBe(
+      `'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; export FOO='\\''bar'\\''; cd "/workspace" && '\\''claude'\\'' '\\''--resume'\\'' '\\''conv-1'\\'''`
+    );
+  });
+
+  it('uses the shared remote shell command builder for fallback commands', () => {
+    const result = resolveK8sCommand('agent', makeAgentConfig(), {
+      FOO: 'bar',
+    });
+
+    expect(result).toBe(
+      `'/bin/sh' -c 'export FOO='\\''bar'\\''; cd "/workspace" && '\\''claude'\\'' '\\''--resume'\\'' '\\''conv-1'\\'''`
+    );
+  });
+
+  it('keeps captured csh-family login shells on the supported sh fallback for agents', () => {
+    const result = resolveK8sCommand(
+      'agent',
+      makeAgentConfig({
+        shellSetup: 'export FOO=bar',
+      }),
+      undefined,
+      tcshLoginProfile
+    );
+
+    expect(result).toBe(
+      `'/bin/sh' -c 'export PATH='\\''/usr/bin'\\''; cd "/workspace" && export FOO=bar && '\\''claude'\\'' '\\''--resume'\\'' '\\''conv-1'\\'''`
+    );
+  });
+
+  it('quotes in-pod agent argv tokens independently', () => {
+    const result = resolveK8sCommand(
+      'agent',
+      makeAgentConfig({
+        command: 'caffeinate',
+        args: ['-i', 'direnv', 'exec', '.', '/opt/Claude Code/bin/claude', 'Fix the bug'],
+      }),
+      undefined,
+      zshProfile
+    );
+
+    expect(result).toBe(
+      `'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; cd "/workspace" && '\\''caffeinate'\\'' '\\''-i'\\'' '\\''direnv'\\'' '\\''exec'\\'' '\\''.'\\'' '\\''/opt/Claude Code/bin/claude'\\'' '\\''Fix the bug'\\'''`
+    );
+  });
+
+  it('preserves in-pod tmux wrapping for commands', () => {
+    const result = resolveK8sCommand(
+      'agent',
+      makeAgentConfig({
+        tmuxSessionName: 'agent-session',
+      }),
+      undefined,
+      zshProfile
+    );
+
+    expect(result).toContain('tmux has-session -t \\"agent-session\\"');
+    expect(result).toContain('tmux new-session -d -s \\"agent-session\\"');
+    expect(result).toContain('tmux attach-session -t \\"agent-session\\"');
+    expect(result).toContain('/bin/sh -c');
+    expect(result).toContain("'\\''claude'\\'' '\\''--resume'\\'' '\\''conv-1'\\''");
+  });
+
+  it('launches in-pod general terminals with the captured remote shell', () => {
+    const result = resolveK8sCommand('general', makeGeneralConfig(), undefined, zshProfile);
+
+    expect(result).toBe(
+      `'/bin/zsh' -lc 'export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''; cd "/workspace" && exec /bin/zsh -il'`
+    );
+  });
+
+  it('uses the selected remote shell profile with PATH lookup for general terminals', () => {
+    const result = resolveK8sCommand('general', makeGeneralConfig(), undefined, bashRemoteProfile);
+
+    expect(result).toContain(
+      `'/usr/bin/env' 'PATH=/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin' 'bash' -lc`
+    );
+    expect(result).toContain(
+      `export PATH='\\''/Users/jona/.local/bin:/opt/homebrew/bin:/usr/bin'\\''`
+    );
+    expect(result).toContain(`export SHELL='\\''bash'\\''`);
+    expect(result).toContain(`cd "/workspace" && exec bash -il`);
+  });
+
+  it('escapes history expansion for csh-family in-pod argv commands', () => {
+    const result = resolveK8sCommand(
       'agent',
       makeAgentConfig({
         command: 'printf',

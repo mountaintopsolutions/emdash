@@ -2,14 +2,12 @@ import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { ACCOUNT_CONFIG } from '@main/core/account/config';
 import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
-import { SshExecutionContext } from '@main/core/execution-context/ssh-execution-context';
+import { createRemoteExecutionContextAndFs } from '@main/core/execution-context/remote-execution-context';
 import { LocalFileSystem } from '@main/core/fs/impl/local-fs';
-import { SshFileSystem } from '@main/core/fs/impl/ssh-fs';
 import type { FileSystemProvider } from '@main/core/fs/types';
 import { cloneRepository, initializeNewProject } from '@main/core/git/impl/git-repo-utils';
 import { githubConnectionService } from '@main/core/github/services/github-connection-service';
 import { repoService } from '@main/core/github/services/repo-service';
-import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
 import type {
@@ -230,9 +228,12 @@ export const githubController = createRPCController({
       let parentFs: FileSystemProvider;
 
       if (connectionId) {
-        const proxy = await sshConnectionManager.connect(connectionId);
-        ctx = new SshExecutionContext(proxy, { root: path.posix.dirname(targetPath) });
-        parentFs = new SshFileSystem(proxy, path.posix.dirname(targetPath));
+        const remote = await createRemoteExecutionContextAndFs(
+          connectionId,
+          path.posix.dirname(targetPath)
+        );
+        ctx = remote.ctx;
+        parentFs = remote.fs;
       } else {
         ctx = new LocalExecutionContext({ root: path.dirname(targetPath) });
         parentFs = new LocalFileSystem(path.dirname(targetPath));
@@ -260,9 +261,12 @@ export const githubController = createRPCController({
       let projectFs: FileSystemProvider;
 
       if (params.connectionId) {
-        const proxy = await sshConnectionManager.connect(params.connectionId);
-        ctx = new SshExecutionContext(proxy, { root: params.targetPath });
-        projectFs = new SshFileSystem(proxy, params.targetPath);
+        const remote = await createRemoteExecutionContextAndFs(
+          params.connectionId,
+          params.targetPath
+        );
+        ctx = remote.ctx;
+        projectFs = remote.fs;
       } else {
         ctx = new LocalExecutionContext({ root: params.targetPath });
         projectFs = new LocalFileSystem(params.targetPath);

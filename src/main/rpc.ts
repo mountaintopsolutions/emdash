@@ -13,6 +13,7 @@ import { githubController } from './core/github/controller';
 import { gitlabController } from './core/gitlab/controller';
 import { issueController } from './core/issues/controller';
 import { jiraController } from './core/jira/controller';
+import { k8sController } from './core/k8s/controller';
 import { linearController } from './core/linear/controller';
 import { mcpController } from './core/mcp/controller';
 import { plainController } from './core/plain/controller';
@@ -59,6 +60,7 @@ export const rpcRouter = createRPCRouter({
   promptLibrary: promptLibraryController,
   skills: skillsController,
   ssh: sshController,
+  k8s: k8sController,
   projects: projectController,
   tasks: taskController,
   conversations: conversationController,

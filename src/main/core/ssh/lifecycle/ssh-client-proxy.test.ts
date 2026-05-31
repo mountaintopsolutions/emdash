@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as RemoteShellProfileModule from './remote-shell-profile';
+import type * as RemoteShellProfileModule from '@main/core/execution-context/remote-shell-profile';
 import { SshClientProxy } from './ssh-client-proxy';
 
 const mocks = vi.hoisted(() => ({
   captureRemoteShellProfile: vi.fn(),
 }));
 
-vi.mock('./remote-shell-profile', async (importOriginal) => {
+vi.mock('@main/core/execution-context/remote-shell-profile', async (importOriginal) => {
   const actual = (await importOriginal()) as typeof RemoteShellProfileModule;
   return {
     ...actual,

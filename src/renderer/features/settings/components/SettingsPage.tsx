@@ -9,6 +9,7 @@ import DefaultAgentSettingsCard from './DefaultAgentSettingsCard';
 import HiddenToolsSettingsCard from './HiddenToolsSettingsCard';
 import IntegrationsCard from './IntegrationsCard';
 import InterfaceSettingsCard from './InterfaceSettingsCard';
+import { K8sConnectionsSettingsCard } from './K8sConnectionsSettingsCard';
 import KeyboardSettingsCard from './KeyboardSettingsCard';
 import NotificationSettingsCard from './NotificationSettingsCard';
 import RepositorySettingsCard from './RepositorySettingsCard';
@@ -133,8 +134,11 @@ export function SettingsPage({
     },
     connections: {
       title: 'Connections',
-      description: 'Manage reusable SSH connections for remote projects.',
-      sections: [{ component: <SshConnectionsSettingsCard /> }],
+      description: 'Manage reusable SSH and Kubernetes connections for remote projects.',
+      sections: [
+        { component: <SshConnectionsSettingsCard /> },
+        { component: <K8sConnectionsSettingsCard /> },
+      ],
     },
     repository: {
       title: 'Repository',

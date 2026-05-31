@@ -4,7 +4,7 @@
  */
 
 import type { SFTPWrapper } from 'ssh2';
-import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
+import { buildRemoteShellCommand } from '@main/core/execution-context/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import { log } from '@main/lib/logger';
 import { quoteShellArg } from '@main/utils/shellEscape';

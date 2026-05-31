@@ -103,6 +103,16 @@ async function executeProvision(
     };
   }
 
+  if (provider.defaultWorkspaceType.kind === 'k8s') {
+    return {
+      ...provisionResult,
+      persistData: {
+        ...provisionResult.persistData,
+        k8sConnectionId: provider.defaultWorkspaceType.connectionId,
+      },
+    };
+  }
+
   return {
     ...provisionResult,
     persistData: {

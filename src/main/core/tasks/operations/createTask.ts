@@ -198,9 +198,10 @@ export async function createTask(
 
   const task = mapTaskRowToTask(taskRow, prs);
 
-  const workspaceType = ((): 'local' | 'project-ssh' | 'byoi' => {
+  const workspaceType = ((): 'local' | 'project-ssh' | 'project-k8s' | 'byoi' => {
     if (params.workspaceProvider === 'byoi') return 'byoi';
     if (project.defaultWorkspaceType.kind === 'ssh') return 'project-ssh';
+    if (project.defaultWorkspaceType.kind === 'k8s') return 'project-k8s';
     return 'local';
   })();
   const workspaceId = crypto.randomUUID();

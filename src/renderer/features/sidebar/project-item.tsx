@@ -92,13 +92,20 @@ export const SidebarProjectItem = observer(function SidebarProjectItem({
 
   if (!project) return null;
 
-  const sshConnectionId = project.data?.type === 'ssh' ? project.data.connectionId : null;
-  const isSshProject = sshConnectionId !== null;
-  const sshConnectionState = sshConnectionId
-    ? appState.sshConnections.stateFor(sshConnectionId)
-    : null;
-  const canReconnect = sshConnectionState !== 'connected';
-  const ProjectIcon = isSshProject ? FolderInput : FolderClosed;
+  const connection =
+    project.data?.type === 'ssh'
+      ? { connectionId: project.data.connectionId, store: appState.sshConnections, label: 'SSH' }
+      : project.data?.type === 'k8s'
+        ? {
+            connectionId: project.data.connectionId,
+            store: appState.k8sConnections,
+            label: 'Kubernetes',
+          }
+        : null;
+  const isRemoteProject = connection !== null;
+  const connectionState = connection ? connection.store.stateFor(connection.connectionId) : null;
+  const canReconnect = connectionState !== 'connected';
+  const ProjectIcon = isRemoteProject ? FolderInput : FolderClosed;
   const projectLabel = project.name ?? 'project';
   const deleteProjectLabel = project.name ?? 'this project';
   const openProject = () => navigate('project', { projectId });
@@ -158,10 +165,10 @@ export const SidebarProjectItem = observer(function SidebarProjectItem({
                   'text-foreground-tertiary-passive'
               )}
             >
-              {isSshProject ? (
+              {isRemoteProject ? (
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate">{project.name}</span>
-                  <ConnectionStatusDot state={sshConnectionState} />
+                  <ConnectionStatusDot state={connectionState} />
                 </span>
               ) : (
                 <span className="flex min-w-0 items-center gap-1.5">
@@ -207,12 +214,12 @@ export const SidebarProjectItem = observer(function SidebarProjectItem({
         </SidebarMenuRow>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {sshConnectionId && (
+        {connection && (
           <>
             <ContextMenuItem
               disabled={!canReconnect}
               onClick={() => {
-                void appState.sshConnections.connect(sshConnectionId).catch(() => {});
+                void connection.store.connect(connection.connectionId).catch(() => {});
               }}
             >
               <RotateCcw className="size-4" />
@@ -222,12 +229,12 @@ export const SidebarProjectItem = observer(function SidebarProjectItem({
               onClick={() => {
                 showChangeConnectionModal({
                   projectId,
-                  currentConnectionId: sshConnectionId,
+                  currentConnectionId: connection.connectionId,
                 });
               }}
             >
               <CableIcon className="size-4" />
-              Change SSH Connection
+              Change {connection.label} Connection
             </ContextMenuItem>
             <ContextMenuSeparator />
           </>

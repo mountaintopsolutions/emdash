@@ -1,7 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IExecutionContext } from '@main/core/execution-context/types';
 import { err, ok } from '@shared/result';
-import { DependencyManager } from './dependency-manager';
+import {
+  DependencyManager,
+  getDependencyManager,
+  localDependencyManager,
+} from './dependency-manager';
+
+const dbMocks = vi.hoisted(() => ({
+  limit: vi.fn(),
+  sshConnect: vi.fn(),
+  kubeConnect: vi.fn(),
+}));
 
 vi.mock('@main/core/settings/settings-service', () => ({
   appSettingsService: {
@@ -19,10 +29,43 @@ vi.mock('@main/lib/events', () => ({
   },
 }));
 
+vi.mock('@main/db/client', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: dbMocks.limit,
+        }),
+      }),
+    }),
+  },
+}));
+
 vi.mock('../ssh/lifecycle/production-ssh-connection-manager', () => ({
   sshConnectionManager: {
-    connect: vi.fn(),
+    connect: dbMocks.sshConnect,
   },
+}));
+
+vi.mock('@main/core/k8s/lifecycle/production-kube-connection-manager', () => ({
+  kubeConnectionManager: {
+    connect: dbMocks.kubeConnect,
+  },
+}));
+
+vi.mock('@main/core/execution-context/ssh-execution-context', () => ({
+  SshExecutionContext: class {},
+}));
+
+vi.mock('@main/core/execution-context/k8s-execution-context', () => ({
+  K8sExecutionContext: class {},
+}));
+
+vi.mock('./install-runner', () => ({
+  createSshInstallCommandRunner: vi.fn(() => vi.fn()),
+  createK8sInstallCommandRunner: vi.fn(() => vi.fn()),
+  createLocalInstallCommandRunner: vi.fn(() => vi.fn()),
+  runLocalInstallCommand: vi.fn(),
 }));
 
 function makeCtx(
@@ -261,5 +304,49 @@ describe('DependencyManager install', () => {
         state: expect.objectContaining({ id: 'codex', status: 'available' }),
       })
     );
+  });
+});
+
+describe('getDependencyManager transport dispatch', () => {
+  beforeEach(() => {
+    dbMocks.sshConnect.mockReset().mockResolvedValue({});
+    dbMocks.kubeConnect.mockReset().mockResolvedValue({});
+    dbMocks.limit.mockReset();
+  });
+
+  it('returns the local manager when no connection id is provided', async () => {
+    const mgr = await getDependencyManager();
+    expect(mgr).toBe(localDependencyManager);
+    expect(dbMocks.limit).not.toHaveBeenCalled();
+  });
+
+  it('uses the k8s transport when the connection id matches a k8s connection', async () => {
+    dbMocks.limit.mockResolvedValue([{ id: 'k8s-1' }]);
+
+    const mgr = await getDependencyManager('k8s-1');
+
+    expect(mgr).toBeInstanceOf(DependencyManager);
+    expect(dbMocks.kubeConnect).toHaveBeenCalledWith('k8s-1');
+    expect(dbMocks.sshConnect).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the ssh transport when no k8s connection matches', async () => {
+    dbMocks.limit.mockResolvedValue([]);
+
+    const mgr = await getDependencyManager('ssh-1');
+
+    expect(mgr).toBeInstanceOf(DependencyManager);
+    expect(dbMocks.sshConnect).toHaveBeenCalledWith('ssh-1');
+    expect(dbMocks.kubeConnect).not.toHaveBeenCalled();
+  });
+
+  it('caches the manager per connection id', async () => {
+    dbMocks.limit.mockResolvedValue([{ id: 'k8s-cache' }]);
+
+    const first = await getDependencyManager('k8s-cache');
+    const second = await getDependencyManager('k8s-cache');
+
+    expect(first).toBe(second);
+    expect(dbMocks.kubeConnect).toHaveBeenCalledTimes(1);
   });
 });

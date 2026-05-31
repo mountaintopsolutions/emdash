@@ -1,7 +1,7 @@
 import { observable } from 'mobx';
 import type { ProjectSettingsStore } from '@renderer/features/projects/stores/project-settings-store';
 import type { WorkspaceResolution } from '@shared/workspaces';
-import { WorkspaceStore } from './workspace';
+import { type RemoteConnection, WorkspaceStore } from './workspace';
 
 export type WorkspaceBootstrapState =
   | { kind: 'pending' }
@@ -31,7 +31,7 @@ export class WorkspaceRegistryStore {
     path: string,
     settingsStore: ProjectSettingsStore,
     baseRef: string,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ): WorkspaceStore {
     const key = makeKey(projectId, workspaceId);
     const existing = this.entries.get(key);
@@ -46,7 +46,7 @@ export class WorkspaceRegistryStore {
       path,
       settingsStore,
       baseRef,
-      sshConnectionId
+      remoteConnection
     );
     this.entries.set(key, { store, refCount: 1, activated: false });
     return store;

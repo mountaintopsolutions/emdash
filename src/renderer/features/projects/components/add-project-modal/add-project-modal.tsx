@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Home, Server } from 'lucide-react';
+import { Boxes, Home, Server } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { useMemo, useState } from 'react';
+import { K8sConnectionSelector } from '@renderer/features/projects/components/add-project-modal/k8s-connection-selector';
 import { SshConnectionSelector } from '@renderer/features/projects/components/add-project-modal/ssh-connection-selector';
 import type {
   ModeData as ProjectCreationModeData,
@@ -37,7 +38,7 @@ import { log } from '@renderer/utils/logger';
 import { ClonePanel, CreateNewPanel, PickExistingPanel } from './content';
 import { useCloneMode, useNewMode, usePickMode } from './modes';
 
-export type Strategy = 'local' | 'ssh';
+export type Strategy = 'local' | 'ssh' | 'k8s';
 
 export type Mode = 'pick' | 'new' | 'clone';
 
@@ -57,20 +58,24 @@ export const AddProjectModal = observer(function AddProjectModal({
   const [mode, setMode] = useState<Mode>(modeProp ?? 'pick');
   const [connectionId, setConnectionId] = useState<string | undefined>(connectionIdProp);
   const [submitState, setSubmitState] = useState<'idle' | 'creating'>('idle');
-  const { connections } = appState.sshConnections;
+  const isRemote = strategy === 'ssh' || strategy === 'k8s';
+  const connections =
+    strategy === 'k8s' ? appState.k8sConnections.connections : appState.sshConnections.connections;
   const availableConnectionIds = useMemo(
     () =>
       connections.map((connection) => connection.id).filter((id): id is string => id !== undefined),
     [connections]
   );
-  const selectedConnectionId =
-    strategy === 'ssh' ? (connectionId ?? availableConnectionIds[0]) : connectionId;
+  const selectedConnectionId = isRemote
+    ? (connectionId ?? availableConnectionIds[0])
+    : connectionId;
 
   const { navigate } = useNavigate();
   const { setCloseGuard } = useModalContext();
   const { isInitialized, needsGhAuth } = useGithubContext();
 
   const showSshConnModal = useShowModal('addSshConnModal');
+  const showK8sConnModal = useShowModal('addK8sConnModal');
   const showAddProjectModal = useShowModal('addProjectModal');
   const showConfirm = useShowModal('confirmActionModal');
   const showProjectConfigImportModal = useShowModal('projectConfigImportModal');
@@ -202,6 +207,106 @@ export const AddProjectModal = observer(function AddProjectModal({
     });
   };
 
+  const handleAddK8sConnection = () => {
+    showK8sConnModal({
+      onSuccess: ({ connectionId: newId }) =>
+        showAddProjectModal({
+          strategy: 'k8s',
+          mode,
+          connectionId: newId,
+        }),
+      onClose: () =>
+        showAddProjectModal({
+          strategy: 'k8s',
+          mode,
+        }),
+    });
+  };
+
+  const handleEditK8sConnection = (id: string) => {
+    const conn = appState.k8sConnections.connections.find((c) => c.id === id);
+    if (!conn) return;
+    showK8sConnModal({
+      initialConfig: conn,
+      onSuccess: () =>
+        showAddProjectModal({
+          strategy: 'k8s',
+          mode,
+          connectionId: id,
+        }),
+      onClose: () =>
+        showAddProjectModal({
+          strategy: 'k8s',
+          mode,
+          connectionId: id,
+        }),
+    });
+  };
+
+  const handleDeleteK8sConnection = async (id: string) => {
+    const conn = appState.k8sConnections.connections.find((c) => c.id === id);
+    if (!conn) return;
+
+    const reopenAddProjectModal = (nextConnectionId?: string) => {
+      showAddProjectModal({
+        strategy: 'k8s',
+        mode,
+        connectionId: nextConnectionId,
+      });
+    };
+
+    let usage;
+    try {
+      usage = await rpc.k8s.getConnectionUsage();
+    } catch (error) {
+      toast({
+        title: 'Failed to load Kubernetes connection usage',
+        description: String(error),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const projects = usage[id] ?? [];
+    if (projects.length > 0) {
+      const projectNames = projects.map((project) => project.name).join(', ');
+      showConfirm({
+        title: 'Cannot delete Kubernetes connection',
+        description: `This Kubernetes connection is used by: ${projectNames}. Change those projects to another connection before deleting it.`,
+        confirmLabel: 'Close',
+        onClose: () => reopenAddProjectModal(id),
+        onSuccess: () => reopenAddProjectModal(id),
+      });
+      return;
+    }
+
+    showConfirm({
+      title: 'Delete Kubernetes connection',
+      description: `This will remove "${conn.name}" and its saved credentials from this device.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+      onClose: () => reopenAddProjectModal(id),
+      onSuccess: () => {
+        void appState.k8sConnections
+          .deleteConnection(id)
+          .then(() => {
+            const nextConnectionId = appState.k8sConnections.connections.find(
+              (connection) => connection.id !== id
+            )?.id;
+            reopenAddProjectModal(nextConnectionId);
+          })
+          .catch((error) => {
+            toast({
+              title: 'Failed to delete Kubernetes connection',
+              description: String(error),
+              variant: 'destructive',
+            });
+            reopenAddProjectModal(id);
+          });
+      },
+    });
+  };
+
   const { value: localProjectSettings } = useAppSettingsKey('localProject');
   const defaultPath =
     strategy === 'local' ? (localProjectSettings?.defaultProjectsDirectory ?? '') : '';
@@ -213,9 +318,7 @@ export const AddProjectModal = observer(function AddProjectModal({
 
   const activeMode = { pick: pickState, new: newState, clone: cloneState }[mode];
   const shouldCheckPickPathStatus =
-    mode === 'pick' &&
-    pickState.path.trim().length > 0 &&
-    (strategy === 'local' || !!selectedConnectionId);
+    mode === 'pick' && pickState.path.trim().length > 0 && (!isRemote || !!selectedConnectionId);
   const pickPathStatusQuery = useQuery({
     queryKey: ['projectPathStatus', strategy, selectedConnectionId, pickState.path],
     queryFn: () =>
@@ -225,7 +328,13 @@ export const AddProjectModal = observer(function AddProjectModal({
             path: pickState.path,
             connectionId: selectedConnectionId!,
           })
-        : rpc.projects.inspectProjectPath({ type: 'local', path: pickState.path }),
+        : strategy === 'k8s'
+          ? rpc.projects.inspectProjectPath({
+              type: 'k8s',
+              path: pickState.path,
+              connectionId: selectedConnectionId!,
+            })
+          : rpc.projects.inspectProjectPath({ type: 'local', path: pickState.path }),
     enabled: shouldCheckPickPathStatus,
   });
   const requiresGitInitialization =
@@ -236,7 +345,7 @@ export const AddProjectModal = observer(function AddProjectModal({
 
   const canSubmit =
     activeMode.isValid &&
-    (strategy === 'local' || !!selectedConnectionId) &&
+    (!isRemote || !!selectedConnectionId) &&
     !isCheckingPickPathStatus &&
     (!requiresGitInitialization || pickState.initGitRepository) &&
     submitState === 'idle';
@@ -250,7 +359,9 @@ export const AddProjectModal = observer(function AddProjectModal({
     const projectType: ProjectType =
       strategy === 'ssh' && selectedConnectionId
         ? { type: 'ssh' as const, connectionId: selectedConnectionId }
-        : { type: 'local' as const };
+        : strategy === 'k8s' && selectedConnectionId
+          ? { type: 'k8s' as const, connectionId: selectedConnectionId }
+          : { type: 'local' as const };
 
     let data: ProjectCreationModeData;
     switch (mode) {
@@ -375,6 +486,16 @@ export const AddProjectModal = observer(function AddProjectModal({
               />
               <TooltipContent>SSH</TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <ToggleGroupItem value="k8s" aria-label="Kubernetes">
+                    <Boxes className="size-3.5" />
+                  </ToggleGroupItem>
+                }
+              />
+              <TooltipContent>Kubernetes</TooltipContent>
+            </Tooltip>
           </ToggleGroup>
         </div>
         {strategy === 'ssh' && !showGithubAuthDisclaimer && (
@@ -386,6 +507,18 @@ export const AddProjectModal = observer(function AddProjectModal({
               onAddConnection={handleAddConnection}
               onEditConnection={handleEditConnection}
               onDeleteConnection={(id) => void handleDeleteConnection(id)}
+            />
+          </Field>
+        )}
+        {strategy === 'k8s' && !showGithubAuthDisclaimer && (
+          <Field>
+            <FieldLabel>Kubernetes Connection</FieldLabel>
+            <K8sConnectionSelector
+              connectionId={selectedConnectionId}
+              onConnectionIdChange={setConnectionId}
+              onAddConnection={handleAddK8sConnection}
+              onEditConnection={handleEditK8sConnection}
+              onDeleteConnection={(id) => void handleDeleteK8sConnection(id)}
             />
           </Field>
         )}

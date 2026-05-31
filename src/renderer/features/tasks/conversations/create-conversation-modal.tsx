@@ -1,6 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { useCallback, useState } from 'react';
-import { getProjectSshConnectionId } from '@renderer/features/projects/stores/project-selectors';
+import { getProjectConnectionId } from '@renderer/features/projects/stores/project-selectors';
 import { useAgentAutoApproveDefaults } from '@renderer/features/tasks/hooks/useAgentAutoApproveDefaults';
 import { conversationRegistry } from '@renderer/features/tasks/stores/conversation-registry';
 import { AgentSelector } from '@renderer/lib/components/agent-selector/agent-selector';
@@ -25,7 +25,7 @@ export const CreateConversationModal = observer(function CreateConversationModal
   projectId: string;
   taskId: string;
 }) {
-  const connectionId = getProjectSshConnectionId(projectId);
+  const connectionId = getProjectConnectionId(projectId);
   const { providerId, setProviderOverride, createDisabled } = useEffectiveProvider(connectionId);
   const conversationMgr = conversationRegistry.get(taskId);
   const autoApproveDefaults = useAgentAutoApproveDefaults();

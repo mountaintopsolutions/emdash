@@ -12,7 +12,7 @@ import { mapTerminalRowToTerminal } from './core';
 
 async function resolveCreateTerminalShell(
   params: CreateTerminalParams,
-  targetKind: 'local' | 'ssh'
+  targetKind: 'local' | 'ssh' | 'k8s'
 ): Promise<TerminalShellId> {
   if (params.shell !== undefined) return params.shell;
   if (targetKind !== 'local') return 'system';

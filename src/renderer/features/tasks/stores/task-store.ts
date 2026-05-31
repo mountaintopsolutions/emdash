@@ -13,6 +13,7 @@ import type {
   TaskLifecycleStatus,
 } from '@shared/tasks';
 import { conversationRegistry } from './conversation-registry';
+import type { RemoteConnection } from './workspace';
 import { workspaceRegistry } from './workspace-registry';
 import { WorkspaceViewModel } from './workspace-view-model';
 
@@ -97,7 +98,7 @@ export class TaskStore {
     workspaceId: string,
     settingsStore: ProjectSettingsStore,
     baseRef: string,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ): void {
     this.data = data;
     workspaceRegistry.acquire(
@@ -106,7 +107,7 @@ export class TaskStore {
       path,
       settingsStore,
       baseRef,
-      sshConnectionId
+      remoteConnection
     );
     this.workspaceId = workspaceId;
     this.state = 'provisioned';

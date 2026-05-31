@@ -35,15 +35,41 @@ export const sshConnections = sqliteTable(
   })
 );
 
+export const k8sConnections = sqliteTable(
+  'k8s_connections',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    context: text('context').notNull(),
+    namespace: text('namespace').notNull(),
+    podName: text('pod_name').notNull(),
+    containerName: text('container_name'), // optional, defaults to first container in pod
+    kubeconfigPath: text('kubeconfig_path'), // optional, defaults to ~/.kube/config
+    metadata: text('metadata'), // JSON for additional connection-specific data
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    nameIdx: uniqueIndex('idx_k8s_connections_name').on(table.name),
+  })
+);
+
 export const projects = sqliteTable(
   'projects',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     path: text('path').notNull(),
-    workspaceProvider: text('workspace_provider').notNull().default('local'), // 'local' | 'ssh'
+    workspaceProvider: text('workspace_provider').notNull().default('local'), // 'local' | 'ssh' | 'k8s'
     baseRef: text('base_ref'),
     sshConnectionId: text('ssh_connection_id').references(() => sshConnections.id, {
+      onDelete: 'set null',
+    }),
+    k8sConnectionId: text('k8s_connection_id').references(() => k8sConnections.id, {
       onDelete: 'set null',
     }),
     createdAt: text('created_at')
@@ -56,6 +82,7 @@ export const projects = sqliteTable(
   (table) => ({
     pathIdx: uniqueIndex('idx_projects_path').on(table.path),
     sshConnectionIdIdx: index('idx_projects_ssh_connection_id').on(table.sshConnectionId),
+    k8sConnectionIdIdx: index('idx_projects_k8s_connection_id').on(table.k8sConnectionId),
   })
 );
 
@@ -140,7 +167,7 @@ export const workspaces = sqliteTable(
   {
     id: text('id').primaryKey(),
     key: text('key'),
-    type: text('type').notNull().$type<'local' | 'project-ssh' | 'byoi'>(),
+    type: text('type').notNull().$type<'local' | 'project-ssh' | 'project-k8s' | 'byoi'>(),
     data: text('data'),
     path: text('path'),
     linesAdded: integer('lines_added'),
@@ -394,6 +421,10 @@ export const sshConnectionsRelations = relations(sshConnections, ({ many }) => (
   projects: many(projects),
 }));
 
+export const k8sConnectionsRelations = relations(k8sConnections, ({ many }) => ({
+  projects: many(projects),
+}));
+
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   tasks: many(tasks),
   settings: one(projectSettings, {
@@ -403,6 +434,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   sshConnection: one(sshConnections, {
     fields: [projects.sshConnectionId],
     references: [sshConnections.id],
+  }),
+  k8sConnection: one(k8sConnections, {
+    fields: [projects.k8sConnectionId],
+    references: [k8sConnections.id],
   }),
 }));
 
@@ -438,6 +473,8 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 
 export type SshConnectionRow = typeof sshConnections.$inferSelect;
 export type SshConnectionInsert = typeof sshConnections.$inferInsert;
+export type K8sConnectionRow = typeof k8sConnections.$inferSelect;
+export type K8sConnectionInsert = typeof k8sConnections.$inferInsert;
 export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectSettingsRow = typeof projectSettings.$inferSelect;
 export type ProjectSettingsInsert = typeof projectSettings.$inferInsert;

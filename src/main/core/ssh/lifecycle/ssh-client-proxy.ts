@@ -1,5 +1,8 @@
 import type { Client, ClientCallback, ClientSFTPCallback, ExecOptions } from 'ssh2';
-import { captureRemoteShellProfile, type RemoteShellProfile } from './remote-shell-profile';
+import {
+  captureRemoteShellProfile,
+  type RemoteShellProfile,
+} from '@main/core/execution-context/remote-shell-profile';
 
 type RemoteShellProfileState =
   | { kind: 'empty' }

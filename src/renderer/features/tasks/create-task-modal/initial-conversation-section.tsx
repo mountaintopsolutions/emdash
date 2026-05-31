@@ -1,7 +1,7 @@
 import { CheckCheckIcon, PlusIcon, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { usePromptLibrary } from '@renderer/features/library/prompts/use-prompt-library';
-import { getProjectSshConnectionId } from '@renderer/features/projects/stores/project-selectors';
+import { getProjectConnectionId } from '@renderer/features/projects/stores/project-selectors';
 import { AddContextPopover } from '@renderer/features/tasks/conversations/add-context-popover';
 import {
   buildIssueContextText,
@@ -32,7 +32,7 @@ export type InitialConversationState = {
 };
 
 export function useInitialConversationState(projectId?: string): InitialConversationState {
-  const connectionId = projectId ? getProjectSshConnectionId(projectId) : undefined;
+  const connectionId = projectId ? getProjectConnectionId(projectId) : undefined;
   const { providerId, setProviderOverride } = useEffectiveProvider(connectionId);
   const [prompt, setPrompt] = useState('');
   const [issueContext, setIssueContext] = useState<string | null>(null);

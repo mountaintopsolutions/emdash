@@ -34,6 +34,7 @@ import {
   type TaskStore,
 } from './task-store';
 import { terminalRegistry } from './terminal-registry';
+import type { RemoteConnection } from './workspace';
 import { workspaceRegistry } from './workspace-registry';
 
 function formatFetchErrorDetail(error: FetchError): string {
@@ -494,13 +495,18 @@ export class TaskManagerStore {
         if (savedSnapshot && current.viewModel) {
           current.viewModel.restoreSnapshot(savedSnapshot);
         }
+        const remoteConnection: RemoteConnection | undefined = result.k8sConnectionId
+          ? { kind: 'k8s', id: result.k8sConnectionId }
+          : result.sshConnectionId
+            ? { kind: 'ssh', id: result.sshConnectionId }
+            : undefined;
         current.transitionToProvisioned(
           { ...current.data, lastInteractedAt: new Date().toISOString() },
           result.path,
           result.workspaceId,
           this._settingsStore,
           this._baseRef,
-          result.sshConnectionId ?? undefined
+          remoteConnection
         );
         current.activate();
       }

@@ -48,7 +48,11 @@ export type TelemetryEventProperties = {
   skills_viewed: { from_view: FocusView | null };
   mcp_viewed: { from_view: FocusView | null };
 
-  project_added: { type: 'local' | 'ssh'; strategy: 'open' | 'create' | 'clone'; success: boolean };
+  project_added: {
+    type: 'local' | 'ssh' | 'k8s';
+    strategy: 'open' | 'create' | 'clone';
+    success: boolean;
+  };
   project_deleted: EmptyProps;
 
   task_created: {
@@ -113,6 +117,7 @@ export type TelemetryEventProperties = {
 
   open_in_external: { app: OpenInAppId | 'browser' };
   ssh_connection_attempted: { success: boolean };
+  k8s_connection_attempted: { success: boolean };
 
   mcp_server_added: { source: 'catalog' | 'custom' };
   mcp_server_removed: EmptyProps;

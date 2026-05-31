@@ -1,5 +1,5 @@
 import { appState } from '@renderer/lib/stores/app-state';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { Project } from '@shared/projects';
 import type { PrSyncStore } from './pr-sync-store';
 import {
   isUnmountedProject,
@@ -53,16 +53,20 @@ export function asMounted(store: ProjectStore | undefined): MountedProject | und
   return store?.mountedProject ?? undefined;
 }
 
-export function mountedProjectData(
-  store: ProjectStore | undefined
-): LocalProject | SshProject | null {
+export function mountedProjectData(store: ProjectStore | undefined): Project | null {
   return store?.mountedProject?.data ?? null;
 }
 
-/** Returns the SSH connection id for a mounted SSH project, otherwise undefined. */
-export function getProjectSshConnectionId(projectId: string): string | undefined {
+/**
+ * Returns the remote connection id (SSH or Kubernetes) for a mounted remote
+ * project, otherwise undefined. Used to target the correct transport for agent
+ * availability/dependency probing — both remote project types carry a
+ * `connectionId`.
+ */
+export function getProjectConnectionId(projectId: string): string | undefined {
   const data = mountedProjectData(getProjectStore(projectId));
-  return data?.type === 'ssh' ? data.connectionId : undefined;
+  if (data?.type === 'ssh' || data?.type === 'k8s') return data.connectionId;
+  return undefined;
 }
 
 /** Returns the display name from any project store variant. */

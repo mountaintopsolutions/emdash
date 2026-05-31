@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import {
   getLocalTerminalShellAvailability,
@@ -318,6 +319,32 @@ describe('terminal shell resolver', () => {
     });
     expect(availability.find((entry) => entry.id === 'zsh')).toBeUndefined();
     expect(availability.find((entry) => entry.id === 'fish')?.available).toBe(true);
+  });
+
+  it('probes shell availability over a Kubernetes proxy', async () => {
+    const proxy = {
+      // `readFileBytes` is the structural discriminator for a Kubernetes proxy.
+      readFileBytes: vi.fn(),
+      exec: vi.fn((command: string) =>
+        Promise.resolve({
+          exitCode: command.includes('fish') ? 1 : 0,
+          stdout: '',
+          stderr: '',
+        })
+      ),
+    } as unknown as KubeClientProxy;
+
+    const availability = await getRemoteTerminalShellAvailability(proxy, {
+      shell: '/bin/sh',
+      env: { PATH: '/usr/local/bin:/usr/bin' },
+    });
+
+    expect(availability.find((entry) => entry.id === 'pwsh')).toBeUndefined();
+    expect(availability.find((entry) => entry.id === 'powershell')).toBeUndefined();
+    expect(availability.find((entry) => entry.id === 'bash')?.available).toBe(true);
+    const fish = availability.find((entry) => entry.id === 'fish');
+    expect(fish?.available).toBe(false);
+    expect(fish?.reason).toBe('Not found on this Kubernetes pod');
   });
 
   it('rejects explicit remote pwsh even when a proxy is provided', async () => {
