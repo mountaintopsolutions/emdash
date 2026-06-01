@@ -36,6 +36,7 @@ function createAppDb(): Database.Database {
       workspace_provider TEXT NOT NULL DEFAULT 'local',
       base_ref TEXT,
       ssh_connection_id TEXT,
+      k8s_connection_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -305,6 +306,7 @@ describe('runLegacyPort', () => {
         workspace_provider TEXT NOT NULL DEFAULT 'local',
         base_ref TEXT,
         ssh_connection_id TEXT,
+        k8s_connection_id TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );

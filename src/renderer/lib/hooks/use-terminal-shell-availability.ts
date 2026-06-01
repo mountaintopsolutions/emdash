@@ -4,18 +4,23 @@ import type { TerminalShellAvailability } from '@shared/terminal-settings';
 
 export const DEFAULT_TERMINAL_SHELL_AVAILABILITY: TerminalShellAvailability[] = [];
 
+export type RemoteShellTarget = { kind: 'ssh' | 'k8s'; connectionId: string };
+
 export function useTerminalShellAvailability(
-  remoteConnectionId: string | undefined,
+  remote: RemoteShellTarget | undefined,
   options: { enabled?: boolean } = {}
 ) {
-  const isRemote = Boolean(remoteConnectionId);
+  const isRemote = Boolean(remote);
   return useQuery({
-    queryKey: ['terminal-shell-availability', remoteConnectionId ?? 'local'],
+    queryKey: [
+      'terminal-shell-availability',
+      remote ? `${remote.kind}:${remote.connectionId}` : 'local',
+    ],
     queryFn: () =>
-      remoteConnectionId
+      remote
         ? rpc.terminals.getTerminalShellAvailability({
-            kind: 'ssh',
-            connectionId: remoteConnectionId,
+            kind: remote.kind,
+            connectionId: remote.connectionId,
           })
         : rpc.terminals.getTerminalShellAvailability({ kind: 'local' }),
     staleTime: isRemote ? 5_000 : 30_000,

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { K8sFileSystem } from '@main/core/fs/impl/k8s-fs';
 import { LocalFileSystem } from '@main/core/fs/impl/local-fs';
 import { SshFileSystem } from '@main/core/fs/impl/ssh-fs';
 import type { FileSystemProvider } from '@main/core/fs/types';
@@ -73,7 +74,9 @@ async function resolveTaskTarget(
       fs ??
       (project.defaultWorkspaceType.kind === 'ssh'
         ? new SshFileSystem(project.defaultWorkspaceType.proxy, targetPath)
-        : new LocalFileSystem(targetPath)),
+        : project.defaultWorkspaceType.kind === 'k8s'
+          ? new K8sFileSystem(project.defaultWorkspaceType.proxy, targetPath)
+          : new LocalFileSystem(targetPath)),
   };
 }
 

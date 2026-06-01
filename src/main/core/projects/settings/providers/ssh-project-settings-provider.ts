@@ -1,9 +1,9 @@
 import path from 'node:path';
+import { resolveRemoteHome } from '@main/core/execution-context/remote-shell-profile';
 import type { IExecutionContext } from '@main/core/execution-context/types';
 import type { SshFileSystem } from '@main/core/fs/impl/ssh-fs';
 import type { FileSystemProvider } from '@main/core/fs/types';
 import { getDefaultSshWorktreeDirectory } from '@main/core/settings/worktree-defaults';
-import { resolveRemoteHome } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { UpdateProjectSettingsError } from '@shared/projects';
 import { err, ok, type Result } from '@shared/result';
 import {

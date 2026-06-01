@@ -1,9 +1,14 @@
+import { eq } from 'drizzle-orm';
+import { K8sExecutionContext } from '@main/core/execution-context/k8s-execution-context';
 import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
 import { SshExecutionContext } from '@main/core/execution-context/ssh-execution-context';
 import type { IExecutionContext } from '@main/core/execution-context/types';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { appSettingsService } from '@main/core/settings/settings-service';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import { resolveLocalAutomationShellWithSystemFallback } from '@main/core/terminal-shell/resolver';
+import { db } from '@main/db/client';
+import { k8sConnections } from '@main/db/schema';
 import { events } from '@main/lib/events';
 import type { IInitializable } from '@main/lib/lifecycle';
 import { log } from '@main/lib/logger';
@@ -17,6 +22,7 @@ import type {
 import { dependencyStatusUpdatedChannel } from '@shared/events/appEvents';
 import { err, ok } from '@shared/result';
 import {
+  createK8sInstallCommandRunner,
   createLocalInstallCommandRunner,
   createSshInstallCommandRunner,
   type InstallCommandRunner,
@@ -260,9 +266,32 @@ async function resolveLocalInstallShellProfile() {
 export const localDependencyManager = new DependencyManager(new LocalExecutionContext());
 
 const sshManagers = new Map<string, DependencyManager>();
+const k8sManagers = new Map<string, DependencyManager>();
 
-export async function getDependencyManager(connectionId?: string): Promise<DependencyManager> {
-  if (!connectionId) return localDependencyManager;
+async function isK8sConnection(connectionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: k8sConnections.id })
+    .from(k8sConnections)
+    .where(eq(k8sConnections.id, connectionId))
+    .limit(1);
+  return row !== undefined;
+}
+
+async function getK8sDependencyManager(connectionId: string): Promise<DependencyManager> {
+  let mgr = k8sManagers.get(connectionId);
+  if (!mgr) {
+    const proxy = await kubeConnectionManager.connect(connectionId);
+    mgr = new DependencyManager(new K8sExecutionContext(proxy), {
+      emitEvents: true,
+      runInstallCommand: createK8sInstallCommandRunner(proxy),
+      connectionId,
+    });
+    k8sManagers.set(connectionId, mgr);
+  }
+  return mgr;
+}
+
+async function getSshDependencyManager(connectionId: string): Promise<DependencyManager> {
   let mgr = sshManagers.get(connectionId);
   if (!mgr) {
     const proxy = await sshConnectionManager.connect(connectionId);
@@ -274,4 +303,18 @@ export async function getDependencyManager(connectionId?: string): Promise<Depen
     sshManagers.set(connectionId, mgr);
   }
   return mgr;
+}
+
+export async function getDependencyManager(connectionId?: string): Promise<DependencyManager> {
+  if (!connectionId) return localDependencyManager;
+  // Fast path: a manager built for this id is already transport-correct, so
+  // skip the connection-type DB lookup entirely.
+  const cached = k8sManagers.get(connectionId) ?? sshManagers.get(connectionId);
+  if (cached) return cached;
+  // The k8s and ssh connection id-spaces are disjoint tables, so look up k8s
+  // first: a hit means this is a k8s project, otherwise fall back to SSH.
+  if (await isK8sConnection(connectionId)) {
+    return getK8sDependencyManager(connectionId);
+  }
+  return getSshDependencyManager(connectionId);
 }

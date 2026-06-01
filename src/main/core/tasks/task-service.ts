@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { projectManager } from '@main/core/projects/project-manager';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import { workspaceBootstrapService } from '@main/core/workspaces/workspace-bootstrap-service';
@@ -41,7 +42,10 @@ export type TaskCrudHooks = {
   'task:deleted': (taskId: string, projectId: string) => void | Promise<void>;
 };
 
-type ProvisionResult = ProvisionTaskResult & { sshConnectionId?: string };
+type ProvisionResult = ProvisionTaskResult & {
+  sshConnectionId?: string;
+  k8sConnectionId?: string;
+};
 
 export class TaskService implements Hookable<TaskCrudHooks> {
   private readonly _hooks = new HookCore<TaskCrudHooks>((name, e) =>
@@ -75,6 +79,7 @@ export class TaskService implements Hookable<TaskCrudHooks> {
         path: workspaceRegistry.get(wsId)?.path ?? '',
         workspaceId: wsId,
         sshConnectionId: pd?.sshConnectionId,
+        k8sConnectionId: pd?.k8sConnectionId,
       });
     }
 
@@ -104,6 +109,9 @@ export class TaskService implements Hookable<TaskCrudHooks> {
     if (persistData.sshConnectionId) {
       sshConnectionManager.reportChannelRecovered(persistData.sshConnectionId);
     }
+    if (persistData.k8sConnectionId) {
+      kubeConnectionManager.reportChannelRecovered(persistData.k8sConnectionId);
+    }
 
     const workspacePath = workspaceRegistry.get(persistData.workspaceId)?.path ?? '';
 
@@ -114,7 +122,7 @@ export class TaskService implements Hookable<TaskCrudHooks> {
 
     if (!workspaceRow.path && workspacePath) {
       const connectionId =
-        project.defaultWorkspaceType.kind === 'ssh'
+        project.defaultWorkspaceType.kind === 'ssh' || project.defaultWorkspaceType.kind === 'k8s'
           ? project.defaultWorkspaceType.connectionId
           : undefined;
       await workspaceBootstrapService.persistPath(
@@ -139,6 +147,7 @@ export class TaskService implements Hookable<TaskCrudHooks> {
       path: workspacePath,
       workspaceId: persistData.workspaceId,
       sshConnectionId: persistData.sshConnectionId,
+      k8sConnectionId: persistData.k8sConnectionId,
     });
   }
 

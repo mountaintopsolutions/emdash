@@ -22,7 +22,7 @@ export const ConversationsPanel = observer(function ConversationsPanel() {
   const workspace = useWorkspace();
   const { groupId, tabManager: tm } = useTabGroupContext();
   const isActive = useIsActiveTask(taskId);
-  const remoteConnectionId = workspace.sshConnectionId;
+  const remoteConnectionId = workspace.remoteConnectionId;
 
   const autoFocus = isActive && taskView.focusedRegion === 'main';
 

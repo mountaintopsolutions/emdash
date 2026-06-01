@@ -130,7 +130,7 @@ export const ProjectTitlebar = observer(function ProjectTitlebar() {
   const mounted = asMounted(store);
   if (!mounted) return <Titlebar leftSlot={<ProjectTitlebarLeft projectId={projectId} />} />;
 
-  const isRemote = mounted.data.type === 'ssh';
+  const isRemote = mounted.data.type === 'ssh' || mounted.data.type === 'k8s';
 
   return (
     <Titlebar

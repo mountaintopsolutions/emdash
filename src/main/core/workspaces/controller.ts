@@ -7,7 +7,7 @@ import { workspaceBootstrapService, type WorktreeContext } from './workspace-boo
 function toCtx(provider: ProjectProvider): WorktreeContext {
   return {
     connectionId:
-      provider.defaultWorkspaceType.kind === 'ssh'
+      provider.defaultWorkspaceType.kind === 'ssh' || provider.defaultWorkspaceType.kind === 'k8s'
         ? provider.defaultWorkspaceType.connectionId
         : undefined,
     repoPath: provider.repoPath,

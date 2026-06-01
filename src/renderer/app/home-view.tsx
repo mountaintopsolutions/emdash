@@ -28,7 +28,7 @@ const PROJECT_ACTIONS = [
   },
   {
     label: 'Add remote project',
-    description: 'Create a project on a remote SSH server',
+    description: 'Create a project on a remote SSH server or Kubernetes cluster',
     icon: Server,
     modalArgs: { strategy: 'ssh', mode: 'pick' },
   },

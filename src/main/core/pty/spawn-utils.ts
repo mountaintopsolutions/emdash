@@ -4,7 +4,7 @@ import {
   FALLBACK_REMOTE_SHELL_PROFILE,
   normalizeRemoteShell,
   type RemoteShellProfile,
-} from '@main/core/ssh/lifecycle/remote-shell-profile';
+} from '@main/core/execution-context/remote-shell-profile';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
 import { quoteCshArg, quoteShellArg } from '@main/utils/shellEscape';
 import type { AgentSessionConfig } from '@shared/agent-session';
@@ -22,7 +22,7 @@ import { buildTmuxShellLine } from './tmux-session-name';
 export type SessionType = 'agent' | 'general';
 export type SessionConfig = AgentSessionConfig | GeneralSessionConfig;
 
-function posixShellLineForSsh(
+function posixShellLine(
   type: SessionType,
   config: SessionConfig,
   profile: ResolvedShellProfile
@@ -65,8 +65,33 @@ export function resolveSshCommand(
   envVars?: Record<string, string>,
   profile?: ResolvedShellProfile | RemoteShellProfile
 ): string {
+  return buildRemoteCommand(type, config, envVars, profile);
+}
+
+/**
+ * Build a single command string for execution inside a Kubernetes pod.
+ *
+ * Mirrors resolveSshCommand: the pod has no transport-specific quoting needs
+ * beyond a POSIX login shell, so the in-pod command string is constructed with
+ * the same cwd/env/tmux/shellSetup handling and shared shell-escaping helpers.
+ */
+export function resolveK8sCommand(
+  type: SessionType,
+  config: SessionConfig,
+  envVars?: Record<string, string>,
+  profile?: ResolvedShellProfile | RemoteShellProfile
+): string {
+  return buildRemoteCommand(type, config, envVars, profile);
+}
+
+function buildRemoteCommand(
+  type: SessionType,
+  config: SessionConfig,
+  envVars: Record<string, string> | undefined,
+  profile: ResolvedShellProfile | RemoteShellProfile | undefined
+): string {
   const effectiveProfile = toResolvedShellProfile(profile);
-  const { cwd, line } = posixShellLineForSsh(type, config, effectiveProfile);
+  const { cwd, line } = posixShellLine(type, config, effectiveProfile);
   const commandString = `cd ${JSON.stringify(cwd)} && ${line}`;
   const remoteProfile = {
     shell: effectiveProfile.executable,

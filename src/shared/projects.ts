@@ -24,7 +24,18 @@ export type SshProject = {
   updatedAt: string;
 };
 
-export type Project = LocalProject | SshProject;
+export type K8sProject = {
+  type: 'k8s';
+  id: string;
+  name: string;
+  path: string;
+  baseRef: string;
+  connectionId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Project = LocalProject | SshProject | K8sProject;
 
 export type CreateLocalProjectParams = {
   type: 'local';
@@ -43,7 +54,19 @@ export type CreateSshProjectParams = {
   initGitRepository?: boolean;
 };
 
-export type CreateProjectParams = CreateLocalProjectParams | CreateSshProjectParams;
+export type CreateK8sProjectParams = {
+  type: 'k8s';
+  id?: string;
+  name: string;
+  path: string;
+  connectionId: string;
+  initGitRepository?: boolean;
+};
+
+export type CreateProjectParams =
+  | CreateLocalProjectParams
+  | CreateSshProjectParams
+  | CreateK8sProjectParams;
 
 export type InspectLocalProjectPathParams = {
   type: 'local';
@@ -56,7 +79,16 @@ export type InspectSshProjectPathParams = {
   connectionId: string;
 };
 
-export type InspectProjectPathParams = InspectLocalProjectPathParams | InspectSshProjectPathParams;
+export type InspectK8sProjectPathParams = {
+  type: 'k8s';
+  path: string;
+  connectionId: string;
+};
+
+export type InspectProjectPathParams =
+  | InspectLocalProjectPathParams
+  | InspectSshProjectPathParams
+  | InspectK8sProjectPathParams;
 
 export type ProjectPathInspection = ProjectPathStatus & {
   existingProject?: Project;
@@ -65,6 +97,8 @@ export type ProjectPathInspection = ProjectPathStatus & {
 export type OpenProjectError =
   | { type: 'path-not-found'; path: string }
   | { type: 'ssh-disconnected'; connectionId: string }
+  | { type: 'pod-not-running'; connectionId: string }
+  | { type: 'pod-gone'; connectionId: string }
   | { type: 'error'; message: string };
 
 export type UpdateProjectSettingsError =

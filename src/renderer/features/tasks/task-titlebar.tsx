@@ -131,7 +131,7 @@ const ActiveTaskTitlebar = observer(function ActiveTaskTitlebar({
 
   if (!taskStore || !taskPayload) return null;
 
-  const isRemoteProject = projectStore?.data.type === 'ssh';
+  const isRemoteProject = projectStore?.data.type === 'ssh' || projectStore?.data.type === 'k8s';
   return (
     <Titlebar
       leftSlot={

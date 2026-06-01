@@ -22,7 +22,10 @@ export interface NewModeData extends BaseModeData {
 
 export type ModeData = PickModeData | CloneModeData | NewModeData;
 
-export type ProjectType = { type: 'local' } | { type: 'ssh'; connectionId: string };
+export type ProjectType =
+  | { type: 'local' }
+  | { type: 'ssh'; connectionId: string }
+  | { type: 'k8s'; connectionId: string };
 
 export type StartProjectCreationResult =
   | { kind: 'existing'; projectId: string }

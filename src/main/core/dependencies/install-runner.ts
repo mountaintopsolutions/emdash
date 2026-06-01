@@ -1,9 +1,11 @@
 import os from 'node:os';
+import { buildRemoteShellCommand } from '@main/core/execution-context/remote-shell-profile';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import { openK8sPty } from '@main/core/pty/k8s-pty';
 import { spawnLocalPty } from '@main/core/pty/local-pty';
 import type { Pty } from '@main/core/pty/pty';
 import { logLocalPtySpawnWarnings, resolveLocalPtySpawn } from '@main/core/pty/pty-spawn-platform';
 import { openSsh2Pty } from '@main/core/pty/ssh2-pty';
-import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
 import { log } from '@main/lib/logger';
@@ -116,6 +118,24 @@ export function createSshInstallCommandRunner(proxy: SshClientProxy): InstallCom
   return async (command: string) => {
     const profile = await proxy.getRemoteShellProfile();
     const result = await openSsh2Pty(proxy, {
+      id: `install:${crypto.randomUUID()}`,
+      command: buildRemoteShellCommand(profile, command),
+      cols: 80,
+      rows: 24,
+    });
+
+    if (!result.success) {
+      return err({ type: 'pty-open-failed', message: result.error.message });
+    }
+
+    return waitForInstallPty(result.data);
+  };
+}
+
+export function createK8sInstallCommandRunner(proxy: KubeClientProxy): InstallCommandRunner {
+  return async (command: string) => {
+    const profile = await proxy.getRemoteShellProfile();
+    const result = await openK8sPty(proxy, {
       id: `install:${crypto.randomUUID()}`,
       command: buildRemoteShellCommand(profile, command),
       cols: 80,
