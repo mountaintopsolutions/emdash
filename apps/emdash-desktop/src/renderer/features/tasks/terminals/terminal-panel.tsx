@@ -34,11 +34,17 @@ export const TerminalsPanel = observer(function TerminalsPanel() {
   const terminalTabView = taskView.terminalTabs;
   const lifecycleScriptsMgr = workspace.lifecycleScripts ?? null;
   const isActive = useIsActiveTask(taskId);
-  const remoteConnectionId = workspace.sshConnectionId;
+  const remoteConnection = workspace.remoteConnection;
+  const remoteConnectionId = remoteConnection?.id;
   const [isPanelFocused, setIsPanelFocused] = useState(false);
   const [shouldLoadShellAvailability, setShouldLoadShellAvailability] = useState(false);
   const { data: shellAvailability = DEFAULT_TERMINAL_SHELL_AVAILABILITY } =
-    useTerminalShellAvailability(remoteConnectionId, { enabled: shouldLoadShellAvailability });
+    useTerminalShellAvailability(
+      remoteConnection
+        ? { kind: remoteConnection.kind, connectionId: remoteConnection.id }
+        : undefined,
+      { enabled: shouldLoadShellAvailability }
+    );
 
   const autoFocus =
     isActive && taskView.isTerminalDrawerOpen && taskView.focusedRegion === 'bottom';

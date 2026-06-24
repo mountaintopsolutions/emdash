@@ -1,33 +1,38 @@
+import type { KubeConfig } from '@kubernetes/client-node';
 import { describe, expect, it, vi } from 'vitest';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import type { PreviewServerEvent } from '@shared/core/preview-servers/types';
 import { previewServerUrl } from '@shared/core/preview-servers/types';
 import type { ConnectionState } from '@shared/core/ssh/ssh';
 import { PortForwardService } from '../port-forwards/port-forward-service';
-import type { PortForwardTunnel } from '../port-forwards/port-forward-tunnel';
+import type {
+  K8sPortForwardProxy,
+  OpenPortForwardTunnelOptions,
+  PortForwardTunnel,
+} from '../port-forwards/port-forward-tunnel';
 import { PreviewServerService } from './preview-server-service';
 
 function createService(
   options: {
     connectionState?: ConnectionState;
-    openTunnel?: (request: {
-      proxy: Pick<SshClientProxy, 'client' | 'isConnected'>;
-      remotePort: number;
-      preferredLocalPort?: number;
-      onConnectionError?: (error: Error) => void;
-    }) => Promise<PortForwardTunnel>;
+    k8sConnectionState?: ConnectionState;
+    openTunnel?: (request: OpenPortForwardTunnelOptions) => Promise<PortForwardTunnel>;
     getSshProxy?: (connectionId: string) => Promise<Pick<SshClientProxy, 'client' | 'isConnected'>>;
+    getK8sProxy?: (connectionId: string) => Promise<K8sPortForwardProxy>;
   } = {}
 ) {
   const events: PreviewServerEvent[] = [];
   const closedTunnelIds: string[] = [];
+  const openedTransports: Array<'ssh' | 'k8s'> = [];
   let openedTunnels = 0;
   let connectionState = options.connectionState ?? 'connected';
+  let k8sConnectionState = options.k8sConnectionState ?? 'connected';
   const portForwards = new PortForwardService({
     openTunnel:
       options.openTunnel ??
-      (async () => {
+      (async (request) => {
         openedTunnels++;
+        openedTransports.push(request.transport);
         return {
           localPort: 6000 + openedTunnels,
           close: async () => {},
@@ -41,6 +46,8 @@ function createService(
     emit: (event) => events.push(event),
     getConnectionState: () => connectionState,
     getSshProxy: options.getSshProxy ?? (async () => fakeProxy()),
+    getK8sConnectionState: () => k8sConnectionState,
+    getK8sProxy: options.getK8sProxy ?? (async () => fakeK8sProxy()),
     closeDelayMs: 250,
   });
 
@@ -48,11 +55,15 @@ function createService(
     service,
     events,
     closedTunnelIds,
+    openedTransports,
     get openedTunnels() {
       return openedTunnels;
     },
     setConnectionState(next: ConnectionState) {
       connectionState = next;
+    },
+    setK8sConnectionState(next: ConnectionState) {
+      k8sConnectionState = next;
     },
   };
 }
@@ -64,6 +75,18 @@ function fakeProxy() {
       return {} as SshClientProxy['client'];
     },
   } satisfies Pick<SshClientProxy, 'client' | 'isConnected'>;
+}
+
+function fakeK8sProxy() {
+  return {
+    isConnected: true,
+    get kubeConfig() {
+      return {} as KubeConfig;
+    },
+    get target() {
+      return { namespace: 'team-ns', podName: 'dev-pod' };
+    },
+  } satisfies K8sPortForwardProxy;
 }
 
 function deferred<T>() {
@@ -589,5 +612,251 @@ describe('PreviewServerService', () => {
     expect(context.closedTunnelIds).toEqual([
       'preview:ssh:auto:project-1:workspace-1:connection-1:5173',
     ]);
+  });
+
+  it('registers k8s detected URLs over a k8s port-forward tunnel', async () => {
+    const context = createService();
+
+    const first = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+    const duplicate = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/ignored',
+    });
+
+    expect(duplicate.id).toBe(first.id);
+    expect(first.id).toBe('k8s:auto:project-1:workspace-1:kube-1:5173');
+    expect(context.openedTunnels).toBe(1);
+    expect(context.openedTransports).toEqual(['k8s']);
+    expect(previewServerUrl(first)).toBe('http://127.0.0.1:6001/');
+  });
+
+  it('keeps a failed k8s preview row with a Kubernetes-specific message', async () => {
+    const context = createService({
+      openTunnel: async () => {
+        throw new Error('bind failed');
+      },
+    });
+
+    const server = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+
+    expect(server.status).toEqual({
+      kind: 'failed',
+      message: 'Failed to open Kubernetes port forward',
+    });
+  });
+
+  it('reconciles a k8s preview to reconnecting when its connection drops, and back when it returns', async () => {
+    const context = createService({ k8sConnectionState: 'connected' });
+    const server = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+    expect(server.status).toEqual({ kind: 'ready' });
+
+    // Connection silently drops (no event delivered) — the periodic reconciler
+    // should notice and flip the preview to reconnecting.
+    context.setK8sConnectionState('disconnected');
+    context.service.reconcileForwardedStatuses();
+    expect(
+      context.service.listForWorkspace({ projectId: 'project-1', workspaceId: 'workspace-1' })[0]
+        ?.status
+    ).toEqual({ kind: 'reconnecting' });
+
+    // Connection returns — reconcile flips it back to ready.
+    context.setK8sConnectionState('connected');
+    context.service.reconcileForwardedStatuses();
+    expect(
+      context.service.listForWorkspace({ projectId: 'project-1', workspaceId: 'workspace-1' })[0]
+        ?.status
+    ).toEqual({ kind: 'ready' });
+  });
+
+  it('leaves a failed k8s preview untouched during reconciliation', async () => {
+    const context = createService({
+      k8sConnectionState: 'disconnected',
+      openTunnel: async () => {
+        throw new Error('bind failed');
+      },
+    });
+    const server = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+    expect(server.status.kind).toBe('failed');
+
+    context.service.reconcileForwardedStatuses();
+    expect(
+      context.service.listForWorkspace({ projectId: 'project-1', workspaceId: 'workspace-1' })[0]
+        ?.status.kind
+    ).toBe('failed');
+  });
+
+  it('stops k8s terminal previews after PTY exit when the connection remains live', async () => {
+    vi.useFakeTimers();
+    try {
+      const context = createService({ k8sConnectionState: 'connected' });
+      const server = await context.service.registerDetectedTarget({
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        connectionId: 'kube-1',
+        transport: 'k8s',
+        proxy: fakeK8sProxy(),
+        source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+        protocol: 'http:',
+        port: 5173,
+        urlPath: '/',
+      });
+
+      await context.service.handleTerminalSourceClosed({
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        terminalId: 'terminal-1',
+        transport: 'k8s',
+        connectionId: 'kube-1',
+        reason: 'pty-exit',
+      });
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(
+        context.service.listForWorkspace({ projectId: 'project-1', workspaceId: 'workspace-1' })
+      ).toEqual([]);
+      expect(context.closedTunnelIds).toEqual([
+        'preview:k8s:auto:project-1:workspace-1:kube-1:5173',
+      ]);
+      expect(server.id).toBe('k8s:auto:project-1:workspace-1:kube-1:5173');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps k8s terminal previews through a transport-loss PTY exit while reconnecting', async () => {
+    vi.useFakeTimers();
+    try {
+      const context = createService({ k8sConnectionState: 'reconnecting' });
+      const server = await context.service.registerDetectedTarget({
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        connectionId: 'kube-1',
+        transport: 'k8s',
+        proxy: fakeK8sProxy(),
+        source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+        protocol: 'http:',
+        port: 5173,
+        urlPath: '/',
+      });
+
+      await context.service.handleTerminalSourceClosed({
+        projectId: 'project-1',
+        workspaceId: 'workspace-1',
+        terminalId: 'terminal-1',
+        transport: 'k8s',
+        connectionId: 'kube-1',
+        reason: 'pty-exit',
+      });
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(
+        context.service.listForWorkspace({ projectId: 'project-1', workspaceId: 'workspace-1' })
+      ).toEqual([server]);
+      expect(context.closedTunnelIds).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('translates k8s connection events into forwarded preview status updates', async () => {
+    const context = createService();
+    const server = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'kube-1',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+
+    context.service.handleK8sConnectionEvent({ type: 'reconnecting', connectionId: 'kube-1' });
+    context.service.handleK8sConnectionEvent({ type: 'reconnected', connectionId: 'kube-1' });
+    context.service.handleK8sConnectionEvent({ type: 'reconnect-failed', connectionId: 'kube-1' });
+
+    const statusEvents = context.events
+      .filter((event) => event.type === 'upsert' && event.server.id === server.id)
+      .map((event) => (event.type === 'upsert' ? event.server.status : null));
+
+    expect(statusEvents).toEqual([
+      { kind: 'starting' },
+      { kind: 'ready' },
+      { kind: 'reconnecting' },
+      { kind: 'ready' },
+      { kind: 'failed', message: 'Kubernetes connection failed to reconnect' },
+    ]);
+  });
+
+  it('does not let an SSH connection event affect a k8s preview on the same connection id', async () => {
+    const context = createService();
+    const server = await context.service.registerDetectedTarget({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'shared-id',
+      transport: 'k8s',
+      proxy: fakeK8sProxy(),
+      source: { kind: 'terminal-output', terminalId: 'terminal-1' },
+      protocol: 'http:',
+      port: 5173,
+      urlPath: '/',
+    });
+
+    context.service.handleSshConnectionEvent({ type: 'reconnecting', connectionId: 'shared-id' });
+
+    const statusEvents = context.events
+      .filter((event) => event.type === 'upsert' && event.server.id === server.id)
+      .map((event) => (event.type === 'upsert' ? event.server.status : null));
+
+    // Only the initial starting -> ready from registration; the SSH event is ignored.
+    expect(statusEvents).toEqual([{ kind: 'starting' }, { kind: 'ready' }]);
   });
 });

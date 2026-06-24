@@ -1,6 +1,7 @@
 import type { GitBranchRef } from '@emdash/core/git';
 import { err, ok, type Result } from '@emdash/shared';
 import { eq, sql } from 'drizzle-orm';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { projectManager } from '@main/core/projects/project-manager';
 import type { ProjectProvider, TaskProvider } from '@main/core/projects/project-provider';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
@@ -31,6 +32,7 @@ export type WorkspaceBootstrapResult = {
   path: string;
   workspaceId: string;
   sshConnectionId?: string;
+  k8sConnectionId?: string;
   worktreeGitDir?: string;
   taskProvider: TaskProvider;
   /** BYOI only — workspace provider data to persist in the DB. */
@@ -83,7 +85,7 @@ export class WorkspaceBootstrapService {
     const workspaceSourceBranch: GitBranchRef | undefined =
       wsConfig?.git.kind === 'create-branch' ? wsConfig.git.fromBranch : undefined;
     const connectionId =
-      project.defaultWorkspaceType.kind === 'ssh'
+      project.defaultWorkspaceType.kind === 'ssh' || project.defaultWorkspaceType.kind === 'k8s'
         ? project.defaultWorkspaceType.connectionId
         : undefined;
 
@@ -132,7 +134,11 @@ export class WorkspaceBootstrapService {
       );
 
       if (connectionId) {
-        sshConnectionManager.reportChannelRecovered(connectionId);
+        if (project.defaultWorkspaceType.kind === 'k8s') {
+          kubeConnectionManager.reportChannelRecovered(connectionId);
+        } else {
+          sshConnectionManager.reportChannelRecovered(connectionId);
+        }
       }
 
       return this._acquireAndBuild(
@@ -242,7 +248,11 @@ export class WorkspaceBootstrapService {
     }
 
     if (connectionId) {
-      sshConnectionManager.reportChannelRecovered(connectionId);
+      if (project.defaultWorkspaceType.kind === 'k8s') {
+        kubeConnectionManager.reportChannelRecovered(connectionId);
+      } else {
+        sshConnectionManager.reportChannelRecovered(connectionId);
+      }
     }
 
     return this._acquireAndBuild(
@@ -386,6 +396,7 @@ export class WorkspaceBootstrapService {
         path: workDir,
         workspaceId,
         sshConnectionId: type.kind === 'ssh' ? type.connectionId : undefined,
+        k8sConnectionId: type.kind === 'k8s' ? type.connectionId : undefined,
         worktreeGitDir: undefined,
         taskProvider: buildResult.taskProvider,
       });

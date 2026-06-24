@@ -9,6 +9,7 @@ import type {
   PreviewServer,
   PreviewServerEvent,
   PreviewServerProtocol,
+  PreviewServerTransport,
 } from '@shared/core/preview-servers/types';
 import { previewServerUrl } from '@shared/core/preview-servers/types';
 
@@ -16,6 +17,7 @@ type PreviewServerStoreOptions = {
   projectId: string;
   workspaceId: string;
   connectionId?: string;
+  transport?: PreviewServerTransport;
 };
 
 type ManualForwardInput = {
@@ -30,12 +32,14 @@ export class PreviewServerStore implements IDisposable {
   private readonly projectId: string;
   private readonly workspaceId: string;
   private readonly connectionId: string | undefined;
+  private readonly transport: PreviewServerTransport;
   private started = false;
 
-  constructor({ projectId, workspaceId, connectionId }: PreviewServerStoreOptions) {
+  constructor({ projectId, workspaceId, connectionId, transport }: PreviewServerStoreOptions) {
     this.projectId = projectId;
     this.workspaceId = workspaceId;
     this.connectionId = connectionId;
+    this.transport = transport ?? 'ssh';
     this.serversResource = new Resource<Map<string, PreviewServer>, PreviewServerEvent>(
       async () => {
         const servers = await rpc.previewServers.listForWorkspace({ projectId, workspaceId });
@@ -86,13 +90,14 @@ export class PreviewServerStore implements IDisposable {
     if (!this.connectionId) {
       return err({
         type: 'not-ssh-workspace',
-        message: 'Manual port forwarding requires an SSH workspace',
+        message: 'Manual port forwarding requires a remote (SSH or Kubernetes) workspace',
       });
     }
     const request: ManualPreviewServerRequest = {
       projectId: this.projectId,
       workspaceId: this.workspaceId,
       connectionId: this.connectionId,
+      transport: this.transport,
       protocol: input.protocol,
       remotePort: input.remotePort,
       ...(input.preferredLocalPort ? { preferredLocalPort: input.preferredLocalPort } : {}),

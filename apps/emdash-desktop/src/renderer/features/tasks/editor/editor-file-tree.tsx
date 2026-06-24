@@ -253,7 +253,7 @@ const FileTreeRow = observer(function FileTreeRow({
       workspaceId,
       workspaceRootPath: workspace.path,
       relPath: node.path,
-      targetPlatform: workspace.sshConnectionId ? 'linux' : undefined,
+      targetPlatform: workspace.remoteConnection ? 'linux' : undefined,
     });
   };
 

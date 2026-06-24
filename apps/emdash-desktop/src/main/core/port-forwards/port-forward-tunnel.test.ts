@@ -1,9 +1,81 @@
 import net from 'node:net';
+import type { Readable, Writable } from 'node:stream';
 import { Transform } from 'node:stream';
+import type { KubeConfig } from '@kubernetes/client-node';
 import type { ClientChannel } from 'ssh2';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
+import type { K8sPortForwardProxy } from './port-forward-tunnel';
 import { openPortForwardTunnel } from './port-forward-tunnel';
+
+// Capture every PortForward construction + portForward call so tests can assert
+// the tunnel binds one PortForward per tunnel and forwards to the right target.
+const portForwardCalls: Array<{
+  kc: KubeConfig;
+  namespace: string;
+  podName: string;
+  ports: number[];
+}> = [];
+const portForwardInstances: Array<{ kc: KubeConfig }> = [];
+
+vi.mock('@kubernetes/client-node', () => {
+  class PortForward {
+    constructor(private readonly kc: KubeConfig) {
+      portForwardInstances.push({ kc });
+    }
+
+    async portForward(
+      namespace: string,
+      podName: string,
+      ports: number[],
+      output: Writable,
+      _err: Writable | null,
+      input: Readable
+    ): Promise<() => null> {
+      portForwardCalls.push({ kc: this.kc, namespace, podName, ports });
+      // Echo bytes back with a `remote:` prefix, mirroring the SSH EchoChannel so
+      // the round-trip assertions are identical across transports.
+      input.on('data', (chunk: Buffer) => {
+        output.write(Buffer.from(`remote:${chunk.toString('utf8')}`));
+      });
+      return () => null;
+    }
+  }
+  return { PortForward };
+});
+
+function makeK8sProxy() {
+  const kc = { id: 'kube-config' } as unknown as KubeConfig;
+  return {
+    proxy: {
+      get isConnected() {
+        return true;
+      },
+      get kubeConfig() {
+        return kc;
+      },
+      get target() {
+        return { namespace: 'team-ns', podName: 'dev-pod' };
+      },
+    } satisfies K8sPortForwardProxy,
+    kc,
+  };
+}
+
+function makeDisconnectedK8sProxy() {
+  return {
+    get isConnected() {
+      return false;
+    },
+    get kubeConfig(): KubeConfig {
+      throw new Error('Kubernetes connection is not available');
+    },
+    get target(): KubeClientProxy['target'] {
+      throw new Error('Kubernetes connection is not available');
+    },
+  } satisfies K8sPortForwardProxy;
+}
 
 class EchoChannel extends Transform {
   override _transform(
@@ -207,6 +279,7 @@ describe('openPortForwardTunnel', () => {
     const { proxy, calls } = makeProxy();
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 5173,
     });
@@ -233,6 +306,7 @@ describe('openPortForwardTunnel', () => {
     const { proxy } = makeProxy();
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 3000,
       preferredLocalPort: busyPort,
@@ -250,6 +324,7 @@ describe('openPortForwardTunnel', () => {
     const { proxy, calls } = makeFamilyAwareProxy('::1');
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 5173,
     });
@@ -274,6 +349,7 @@ describe('openPortForwardTunnel', () => {
     const connectionErrors: string[] = [];
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 5173,
       onConnectionError: (error) => connectionErrors.push(error.message),
@@ -298,6 +374,7 @@ describe('openPortForwardTunnel', () => {
     const connectionErrors: string[] = [];
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 5173,
       onConnectionError: (error) => connectionErrors.push(error.message),
@@ -328,6 +405,7 @@ describe('openPortForwardTunnel', () => {
     process.once('uncaughtException', onUncaught);
 
     const tunnel = await openPortForwardTunnel({
+      transport: 'ssh',
       proxy,
       remotePort: 5173,
       onConnectionError: (error) => connectionErrors.push(error.message),
@@ -338,6 +416,61 @@ describe('openPortForwardTunnel', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(connectionErrors).toEqual(['(SSH) Channel open failure: Connection refused']);
+      expect(uncaughtErrors).toEqual([]);
+    } finally {
+      process.removeListener('uncaughtException', onUncaught);
+      await tunnel.close();
+    }
+  });
+});
+
+describe('openPortForwardTunnel (k8s)', () => {
+  afterEach(() => {
+    portForwardCalls.splice(0);
+    portForwardInstances.splice(0);
+  });
+
+  it('binds a local listener and forwards sockets through the k8s PortForward', async () => {
+    const { proxy, kc } = makeK8sProxy();
+
+    const tunnel = await openPortForwardTunnel({
+      transport: 'k8s',
+      proxy,
+      remotePort: 5173,
+    });
+
+    try {
+      await expect(roundTrip(tunnel.localPort, 'ping')).resolves.toBe('remote:ping');
+      // One PortForward is constructed per tunnel (bound to the live KubeConfig)
+      // and reused across its sockets.
+      expect(portForwardInstances).toEqual([{ kc }]);
+      expect(portForwardCalls).toEqual([
+        { kc, namespace: 'team-ns', podName: 'dev-pod', ports: [5173] },
+      ]);
+    } finally {
+      await tunnel.close();
+    }
+  });
+
+  it('destroys the socket without crashing when the proxy is disconnected', async () => {
+    const proxy = makeDisconnectedK8sProxy();
+    const uncaughtErrors: string[] = [];
+    const onUncaught = (uncaught: Error) => uncaughtErrors.push(uncaught.message);
+    process.once('uncaughtException', onUncaught);
+
+    const tunnel = await openPortForwardTunnel({
+      transport: 'k8s',
+      proxy,
+      remotePort: 5173,
+    });
+
+    try {
+      await connectUntilClosed(tunnel.localPort);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // A disconnected proxy never reaches the PortForward; the socket is closed
+      // cleanly with no thrown/uncaught error.
+      expect(portForwardCalls).toEqual([]);
       expect(uncaughtErrors).toEqual([]);
     } finally {
       process.removeListener('uncaughtException', onUncaught);

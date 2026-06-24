@@ -72,10 +72,12 @@ export async function prepareCreateTask(
         .where(eq(projects.id, params.projectId))
         .limit(1);
 
-      const isRemote = projectRow?.workspaceProvider === 'ssh';
+      const isSsh = projectRow?.workspaceProvider === 'ssh';
+      const isK8s = projectRow?.workspaceProvider === 'k8s';
+      const isRemote = isSsh || isK8s;
       const location = isRemote ? 'remote' : 'local';
-      const sshConnectionId = isRemote ? (projectRow?.sshConnectionId ?? null) : null;
-      const legacyType = isRemote ? 'project-ssh' : 'local';
+      const sshConnectionId = isSsh ? (projectRow?.sshConnectionId ?? null) : null;
+      const legacyType = isK8s ? 'project-k8s' : isSsh ? 'project-ssh' : 'local';
 
       newWorkspaceValues = {
         id: workspaceId,

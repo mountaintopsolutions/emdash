@@ -1,4 +1,3 @@
-import type { ClientCallback, ClientChannel } from 'ssh2';
 import type { IExecutionContext } from '@main/core/execution-context/types';
 import { isValidEnvVarName, quoteCshArg, quoteShellArg } from '@main/utils/shellEscape';
 import { parseRemoteEnvOutput, SHELL_ENV_CAPTURE_GUARD } from '@main/utils/userEnv';
@@ -34,9 +33,30 @@ type RawExecResult = {
   stderr: string;
 };
 
-type RemoteShellExecClient = {
-  exec(command: string, callback: ClientCallback): void;
-};
+/**
+ * A minimal channel shape covering the subset of ssh2's ClientChannel used by
+ * captureRemoteShellProfile. Kept transport-neutral so non-SSH transports can
+ * adapt their own exec streams onto it.
+ */
+export interface RemoteShellExecChannel {
+  on(event: 'data', handler: (chunk: Buffer) => void): unknown;
+  on(event: 'close', handler: (exitCode: number | null) => void): unknown;
+  on(event: 'error', handler: (error: Error) => void): unknown;
+  stderr: { on(event: 'data', handler: (chunk: Buffer) => void): unknown };
+  destroy(): void;
+}
+
+/**
+ * A transport-neutral exec surface used to capture a remote login-shell
+ * profile. SshClientProxy satisfies this directly; other transports provide a
+ * small adapter that mimics the ssh2 callback shape.
+ */
+export interface RemoteShellExecClient {
+  exec(
+    command: string,
+    callback: (error: Error | undefined, channel: RemoteShellExecChannel) => void
+  ): void;
+}
 
 export function normalizeRemoteShell(raw: string | undefined | null): string {
   const shell = raw?.trim();
@@ -189,7 +209,7 @@ function execRaw(
   timeoutMs: number
 ): Promise<RawExecResult> {
   return new Promise((resolve, reject) => {
-    let stream: ClientChannel | undefined;
+    let stream: RemoteShellExecChannel | undefined;
     let settled = false;
     let stdout = '';
     let stderr = '';

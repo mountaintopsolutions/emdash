@@ -2,8 +2,8 @@ import { makeObservable, observable, reaction, runInAction, toJS } from 'mobx';
 import { toast } from 'sonner';
 import type { GitRepositoryStore } from '@renderer/features/projects/stores/git-repository-store';
 import {
+  getProjectConnectionId,
   getProjectManagerStore,
-  getProjectSshConnectionId,
 } from '@renderer/features/projects/stores/project-selectors';
 import type { ProjectSettingsStore } from '@renderer/features/projects/stores/project-settings-store';
 import { getTaskGitWorktreeStore } from '@renderer/features/tasks/stores/task-selectors';
@@ -42,6 +42,7 @@ import {
   type TaskStore,
 } from './task-store';
 import { terminalRegistry } from './terminal-registry';
+import type { RemoteConnection } from './workspace';
 import { workspaceRegistry } from './workspace-registry';
 
 function formatCreateTaskError(error: CreateTaskError, opts?: { isSshProject?: boolean }): string {
@@ -190,9 +191,21 @@ export class TaskManagerStore {
     // double-transition if the renderer-driven RPC already completed first.
     this._unsubProvisioned = events.on(
       taskProvisionedChannel,
-      ({ taskId, projectId: evtProjectId, path, workspaceId, sshConnectionId }) => {
+      ({
+        taskId,
+        projectId: evtProjectId,
+        path,
+        workspaceId,
+        sshConnectionId,
+        k8sConnectionId,
+      }) => {
         if (evtProjectId !== this.projectId) return;
-        void this._doHandleProvisioned(taskId, path, workspaceId, sshConnectionId);
+        const remoteConnection: RemoteConnection | undefined = k8sConnectionId
+          ? { kind: 'k8s', id: k8sConnectionId }
+          : sshConnectionId
+            ? { kind: 'ssh', id: sshConnectionId }
+            : undefined;
+        void this._doHandleProvisioned(taskId, path, workspaceId, remoteConnection);
       }
     );
 
@@ -373,7 +386,7 @@ export class TaskManagerStore {
 
     if (!result.success) {
       const message = formatCreateTaskError(result.error, {
-        isSshProject: getProjectSshConnectionId(this.projectId) !== undefined,
+        isSshProject: getProjectConnectionId(this.projectId) !== undefined,
       });
       clearOptimisticInitialConversationWorking();
       runInAction(() => {
@@ -471,12 +484,17 @@ export class TaskManagerStore {
         if (savedSnapshot && current.viewModel) {
           current.viewModel.restoreSnapshot(savedSnapshot);
         }
+        const remoteConnection: RemoteConnection | undefined = result.data.k8sConnectionId
+          ? { kind: 'k8s', id: result.data.k8sConnectionId }
+          : result.data.sshConnectionId
+            ? { kind: 'ssh', id: result.data.sshConnectionId }
+            : undefined;
         current.transitionToProvisioned(
           { ...current.data, lastInteractedAt: new Date().toISOString() },
           result.data.path,
           result.data.workspaceId,
           this._repository,
-          result.data.sshConnectionId ?? undefined
+          remoteConnection
         );
         current.activate();
       }
@@ -487,7 +505,7 @@ export class TaskManagerStore {
     taskId: string,
     path: string,
     workspaceId: string,
-    sshConnectionId?: string
+    remoteConnection?: RemoteConnection
   ): Promise<void> {
     const savedSnapshot = (await viewStateCache.get(`task:${taskId}`)) as
       | TaskViewSnapshot
@@ -506,7 +524,7 @@ export class TaskManagerStore {
           path,
           workspaceId,
           this._repository,
-          sshConnectionId
+          remoteConnection
         );
         current.activate();
       }

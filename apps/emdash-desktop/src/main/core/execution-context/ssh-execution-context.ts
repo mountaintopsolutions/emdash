@@ -2,7 +2,7 @@ import {
   buildRemoteShellCommand,
   FALLBACK_REMOTE_SHELL_PROFILE,
   type RemoteShellProfile,
-} from '@main/core/ssh/lifecycle/remote-shell-profile';
+} from '@main/core/execution-context/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import { NON_INTERACTIVE_GIT_ENV } from './non-interactive-git-env';

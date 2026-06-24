@@ -42,6 +42,7 @@ export type GitSetup =
 export type WorkspaceLocation =
   | { host: 'local'; path?: string }
   | { host: 'project-ssh'; path?: string }
+  | { host: 'project-k8s'; path?: string }
   | { host: 'byoi'; remoteWorkspaceId?: string };
 
 export const taskLifecycleStatuses = z.enum([

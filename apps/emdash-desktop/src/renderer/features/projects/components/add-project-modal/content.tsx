@@ -10,9 +10,27 @@ import { RadioGroup, RadioGroupItem } from '@renderer/lib/ui/radio-group';
 import { Separator } from '@renderer/lib/ui/separator';
 import { Switch } from '@renderer/lib/ui/switch';
 import { type Strategy } from './add-project-modal';
+import { K8sDirectorySelector } from './k8s-directory-selector';
 import { LocalDirectorySelector } from './local-directory-selector';
 import { type CloneModeState, type NewModeState, type PickModeState } from './modes';
 import { RemoteDirectorySelector } from './remote-directory-selector';
+
+function RemoteSelector({
+  strategy,
+  connectionId,
+  value,
+  onChange,
+}: {
+  strategy: Strategy;
+  connectionId?: string;
+  value: string;
+  onChange: (path: string) => void;
+}) {
+  if (strategy === 'k8s') {
+    return <K8sDirectorySelector connectionId={connectionId} value={value} onChange={onChange} />;
+  }
+  return <RemoteDirectorySelector connectionId={connectionId} value={value} onChange={onChange} />;
+}
 
 export function PickExistingPanel({
   strategy,
@@ -40,7 +58,8 @@ export function PickExistingPanel({
             message="Select a project directory to open"
           />
         ) : (
-          <RemoteDirectorySelector
+          <RemoteSelector
+            strategy={strategy}
             connectionId={connectionId}
             value={state.path}
             onChange={state.handlePathChange}
@@ -174,7 +193,8 @@ export function CreateNewPanel({
               message="Select a project directory to open"
             />
           ) : (
-            <RemoteDirectorySelector
+            <RemoteSelector
+              strategy={strategy}
               connectionId={connectionId}
               value={state.path}
               onChange={state.setPath}
@@ -232,7 +252,8 @@ export function ClonePanel({
               message="Select a project directory to open"
             />
           ) : (
-            <RemoteDirectorySelector
+            <RemoteSelector
+              strategy={strategy}
               connectionId={connectionId}
               value={state.path}
               onChange={state.setPath}

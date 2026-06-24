@@ -20,6 +20,11 @@ vi.mock('@renderer/lib/ipc', () => ({
       getConnectionState: async () => ({}),
       getHealthStates: async () => ({}),
     },
+    k8s: {
+      getConnections: async () => [],
+      getConnectionState: async () => ({}),
+      getHealthStates: async () => ({}),
+    },
     viewState: {
       save: vi.fn(),
     },
@@ -234,13 +239,9 @@ describe('WorkspaceViewModel terminal drawer snapshot', () => {
   it('closes a restored empty terminal drawer after terminal state is loaded', async () => {
     const terminals = makeTerminalManager({ terminalIds: [], isLoaded: true });
     terminalRegistryEntries().set('task-1', terminals);
-    workspaceRegistry.acquire(
-      'project-1',
-      'workspace-1',
-      '/tmp/emdash-test-workspace',
-      { settings: {} } as never,
-      'main'
-    );
+    workspaceRegistry.acquire('project-1', 'workspace-1', '/tmp/emdash-test-workspace', {
+      settings: {},
+    } as never);
 
     const viewModel = makeProvisionedViewModel();
     viewModel.restoreSnapshot({
@@ -266,13 +267,9 @@ describe('WorkspaceViewModel terminal drawer snapshot', () => {
   it('closes a restored empty terminal drawer when empty terminal state finishes loading', async () => {
     const terminals = makeTerminalManager({ terminalIds: [], isLoaded: false });
     terminalRegistryEntries().set('task-1', terminals);
-    workspaceRegistry.acquire(
-      'project-1',
-      'workspace-1',
-      '/tmp/emdash-test-workspace',
-      { settings: {} } as never,
-      'main'
-    );
+    workspaceRegistry.acquire('project-1', 'workspace-1', '/tmp/emdash-test-workspace', {
+      settings: {},
+    } as never);
 
     const viewModel = makeProvisionedViewModel();
     viewModel.restoreSnapshot({
@@ -302,13 +299,9 @@ describe('WorkspaceViewModel terminal drawer snapshot', () => {
   it('closes the terminal drawer after the user closes the last terminal', async () => {
     const terminals = makeTerminalManager({ terminalIds: ['terminal-1'], isLoaded: true });
     terminalRegistryEntries().set('task-1', terminals);
-    workspaceRegistry.acquire(
-      'project-1',
-      'workspace-1',
-      '/tmp/emdash-test-workspace',
-      { settings: {} } as never,
-      'main'
-    );
+    workspaceRegistry.acquire('project-1', 'workspace-1', '/tmp/emdash-test-workspace', {
+      settings: {},
+    } as never);
 
     const viewModel = makeProvisionedViewModel();
     viewModel.restoreSnapshot({

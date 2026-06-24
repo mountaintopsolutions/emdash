@@ -1,5 +1,7 @@
 import net from 'node:net';
+import { type KubeConfig, PortForward } from '@kubernetes/client-node';
 import type { ClientChannel } from 'ssh2';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 
 const LOCAL_BIND_HOST = '127.0.0.1';
@@ -26,12 +28,22 @@ export type PortForwardTunnel = {
   close(): Promise<void>;
 };
 
+export type SshPortForwardProxy = Pick<SshClientProxy, 'client' | 'isConnected'>;
+export type K8sPortForwardProxy = Pick<KubeClientProxy, 'kubeConfig' | 'target' | 'isConnected'>;
+
+/**
+ * The transport-specific portion of a tunnel request. Both variants share the
+ * generic local-listener / EADDRINUSE-fallback machinery in
+ * `openPortForwardTunnel`; only `forwardSocket` differs per transport.
+ */
 export type OpenPortForwardTunnelOptions = {
-  proxy: Pick<SshClientProxy, 'client' | 'isConnected'>;
   remotePort: number;
   preferredLocalPort?: number;
   onConnectionError?: (error: Error) => void;
-};
+} & (
+  | { transport: 'ssh'; proxy: SshPortForwardProxy }
+  | { transport: 'k8s'; proxy: K8sPortForwardProxy }
+);
 
 export async function openPortForwardTunnel(
   options: OpenPortForwardTunnelOptions
@@ -51,11 +63,25 @@ function bindTunnel(
   localPort: number
 ): Promise<PortForwardTunnel> {
   const sockets = new Set<net.Socket>();
+  // One PortForward per tunnel, reused across the tunnel's sockets (mirroring how
+  // the SSH variant reuses the single live ssh2 Client) but constructed lazily on
+  // the first connected socket. Building it eagerly would read proxy.kubeConfig at
+  // bind time, which throws while the connection is down; deferring keeps binding
+  // safe and rebinds to the current live KubeConfig after a reconnect.
+  let forward: PortForward | undefined;
+  let forwardKubeConfig: KubeConfig | undefined;
+  const getForward = (kc: KubeConfig): PortForward => {
+    if (!forward || forwardKubeConfig !== kc) {
+      forward = new PortForward(kc);
+      forwardKubeConfig = kc;
+    }
+    return forward;
+  };
   const server = net.createServer((socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
     socket.on('error', () => {});
-    forwardSocket(socket, options);
+    forwardSocket(socket, options, getForward);
   });
 
   return new Promise((resolve, reject) => {
@@ -87,12 +113,28 @@ function bindTunnel(
   });
 }
 
-function forwardSocket(socket: net.Socket, options: OpenPortForwardTunnelOptions): void {
+function forwardSocket(
+  socket: net.Socket,
+  options: OpenPortForwardTunnelOptions,
+  getForward: (kc: KubeConfig) => PortForward
+): void {
   if (!options.proxy.isConnected) {
     socket.destroy();
     return;
   }
 
+  if (options.transport === 'k8s') {
+    forwardK8sSocket(socket, options, getForward);
+    return;
+  }
+
+  forwardSshSocket(socket, options);
+}
+
+function forwardSshSocket(
+  socket: net.Socket,
+  options: Extract<OpenPortForwardTunnelOptions, { transport: 'ssh' }>
+): void {
   let client;
   try {
     client = options.proxy.client;
@@ -139,6 +181,46 @@ function forwardSocket(socket: net.Socket, options: OpenPortForwardTunnelOptions
   };
 
   tryTargetHost(0);
+}
+
+function forwardK8sSocket(
+  socket: net.Socket,
+  options: Extract<OpenPortForwardTunnelOptions, { transport: 'k8s' }>,
+  getForward: (kc: KubeConfig) => PortForward
+): void {
+  let target;
+  let forward: PortForward;
+  try {
+    target = options.proxy.target;
+    forward = getForward(options.proxy.kubeConfig);
+  } catch {
+    socket.destroy();
+    return;
+  }
+
+  // PortForward.portForward streams the pod's remote port over the API server
+  // WebSocket: (namespace, pod, [ports], output, err, input). The socket is the
+  // output (pod -> local) and input (local -> pod); the protocol error channel
+  // is left null (we surface failures via the rejected promise rather than
+  // writing error bytes into the TCP socket). A failure to establish the stream
+  // routes through onConnectionError and tears the socket down cleanly, so a
+  // dropped/refused remote (or disconnected proxy) never crashes the process.
+  void Promise.resolve()
+    .then(() =>
+      forward.portForward(
+        target.namespace,
+        target.podName,
+        [options.remotePort],
+        socket,
+        null,
+        socket
+      )
+    )
+    .catch((error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error));
+      options.onConnectionError?.(err);
+      socket.destroy();
+    });
 }
 
 function closeServer(server: net.Server): Promise<void> {

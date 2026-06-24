@@ -38,7 +38,10 @@ import type { TeardownTaskError } from './provision-task-error';
 import { taskSessionManager } from './task-session-manager';
 import { mapTaskRowToTask } from './utils/utils';
 
-type ProvisionResult = ProvisionTaskResult & { sshConnectionId?: string };
+type ProvisionResult = ProvisionTaskResult & {
+  sshConnectionId?: string;
+  k8sConnectionId?: string;
+};
 
 export type TaskLifecycleHooks = {
   'task:created': (task: Task, params: CreateTaskParams) => void | Promise<void>;
@@ -96,6 +99,7 @@ export class TaskService implements Hookable<TaskLifecycleHooks> {
         path: workspaceRegistry.get(wsId)?.path ?? '',
         workspaceId: wsId,
         sshConnectionId: pd?.sshConnectionId,
+        k8sConnectionId: pd?.k8sConnectionId,
       };
       this._hooks.callHookBackground('task:workspace-ready', taskId, provisionResult);
       events.emit(taskProvisionedChannel, { taskId, projectId, ...provisionResult });
@@ -111,6 +115,7 @@ export class TaskService implements Hookable<TaskLifecycleHooks> {
       path: result.data.path,
       workspaceId: result.data.workspaceId,
       sshConnectionId: result.data.sshConnectionId,
+      k8sConnectionId: result.data.k8sConnectionId,
     };
 
     this._hooks.callHookBackground('task:workspace-ready', taskId, provisionResult);

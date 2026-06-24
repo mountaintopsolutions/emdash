@@ -55,7 +55,8 @@ export async function buildTaskFromWorkspace(
     task,
     workspace,
     projectPath,
-    settings
+    settings,
+    type
   );
 
   const { conversations: conversationProvider, terminals: terminalProvider } =

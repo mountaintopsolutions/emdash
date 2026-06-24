@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
   const cloneRepository = vi.fn();
   const commit = vi.fn();
   const connect = vi.fn();
+  const kubeConnect = vi.fn();
+  const isK8sConnection = vi.fn();
   const exists = vi.fn();
   const getHead = vi.fn();
   const mkdir = vi.fn();
@@ -20,9 +22,14 @@ const mocks = vi.hoisted(() => {
     cloneRepository,
     commit,
     connect,
+    kubeConnect,
+    isK8sConnection,
     exists,
     getHead,
     localFileSystem: vi.fn(function () {
+      return { exists, mkdir, write };
+    }),
+    k8sFileSystem: vi.fn(function () {
       return { exists, mkdir, write };
     }),
     mkdir,
@@ -47,6 +54,10 @@ vi.mock('@main/core/fs/impl/ssh-fs', () => ({
   SshFileSystem: mocks.sshFileSystem,
 }));
 
+vi.mock('@main/core/fs/impl/k8s-fs', () => ({
+  K8sFileSystem: mocks.k8sFileSystem,
+}));
+
 vi.mock('@main/core/runtime/runtime-manager', () => ({
   runtimeManager: {
     acquire: mocks.runtimeAcquire,
@@ -59,9 +70,20 @@ vi.mock('@main/core/ssh/lifecycle/production-ssh-connection-manager', () => ({
   },
 }));
 
+vi.mock('@main/core/k8s/lifecycle/production-kube-connection-manager', () => ({
+  kubeConnectionManager: {
+    connect: mocks.kubeConnect,
+  },
+}));
+
+vi.mock('@main/core/execution-context/remote-execution-context', () => ({
+  isK8sConnection: mocks.isK8sConnection,
+}));
+
 describe('cloneProjectRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isK8sConnection.mockResolvedValue(false);
     mocks.mkdir.mockResolvedValue(undefined);
     mocks.runtimeAcquire.mockResolvedValue({
       value: { git: { cloneRepository: mocks.cloneRepository } },
@@ -136,6 +158,7 @@ describe('cloneProjectRepository', () => {
 describe('initializeProjectRepository', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isK8sConnection.mockResolvedValue(false);
     mocks.exists.mockResolvedValue(true);
     mocks.write.mockResolvedValue({ success: true, bytesWritten: 20 });
     mocks.stage.mockResolvedValue({ success: true, data: {} });

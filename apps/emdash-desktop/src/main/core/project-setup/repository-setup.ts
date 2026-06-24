@@ -1,8 +1,11 @@
 import path from 'node:path';
 import type { CloneRepositoryError, GitHeadModel, IGitWorktree } from '@emdash/core/git';
+import { isK8sConnection } from '@main/core/execution-context/remote-execution-context';
+import { K8sFileSystem } from '@main/core/fs/impl/k8s-fs';
 import { LocalFileSystem } from '@main/core/fs/impl/local-fs';
 import { SshFileSystem } from '@main/core/fs/impl/ssh-fs';
 import type { FileSystemProvider } from '@main/core/fs/types';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
 import type { MachineRef } from '@main/core/runtime/types';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
@@ -22,15 +25,21 @@ export type InitializeProjectRepositoryParams = {
   connectionId?: string;
 };
 
-function machineForConnection(connectionId: string | undefined): MachineRef {
-  return connectionId ? { kind: 'ssh', connectionId } : { kind: 'local' };
+async function machineForConnection(connectionId: string | undefined): Promise<MachineRef> {
+  if (!connectionId) return { kind: 'local' };
+  if (await isK8sConnection(connectionId)) return { kind: 'k8s', connectionId };
+  return { kind: 'ssh', connectionId };
 }
 
 function parentPathForMachine(targetPath: string, machine: MachineRef): string {
-  return machine.kind === 'ssh' ? path.posix.dirname(targetPath) : path.dirname(targetPath);
+  return machine.kind === 'local' ? path.dirname(targetPath) : path.posix.dirname(targetPath);
 }
 
 async function createProjectFs(root: string, machine: MachineRef): Promise<FileSystemProvider> {
+  if (machine.kind === 'k8s') {
+    const proxy = await kubeConnectionManager.connect(machine.connectionId);
+    return new K8sFileSystem(proxy, root);
+  }
   if (machine.kind === 'ssh') {
     const proxy = await sshConnectionManager.connect(machine.connectionId);
     return new SshFileSystem(proxy, root);
@@ -74,7 +83,7 @@ async function pushInitialBranch(worktree: IGitWorktree): Promise<GitRepositoryS
 export async function cloneProjectRepository(
   params: CloneProjectRepositoryParams
 ): Promise<GitRepositorySetupResult> {
-  const machine = machineForConnection(params.connectionId);
+  const machine = await machineForConnection(params.connectionId);
   const parentFs = await createProjectFs(parentPathForMachine(params.targetPath, machine), machine);
   await parentFs.mkdir('.', { recursive: true });
 
@@ -96,7 +105,7 @@ export async function cloneProjectRepository(
 export async function initializeProjectRepository(
   params: InitializeProjectRepositoryParams
 ): Promise<GitRepositorySetupResult> {
-  const machine = machineForConnection(params.connectionId);
+  const machine = await machineForConnection(params.connectionId);
   const projectFs = await createProjectFs(params.targetPath, machine);
 
   if (!(await projectFs.exists('.'))) {

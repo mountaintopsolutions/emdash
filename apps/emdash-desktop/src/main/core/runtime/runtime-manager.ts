@@ -1,9 +1,11 @@
 import { GitRuntime } from '@emdash/core/git';
 import { ResourceMap } from '@emdash/core/lib';
 import type { Lease } from '@emdash/shared';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import { log } from '@main/lib/logger';
 import { ConstantHealthSource } from './health';
+import { LegacyK8sGitRuntime } from './legacy/k8s-git';
 import { LegacySshGitRuntime } from './legacy/ssh-git';
 import { machineKey, type MachineRef, type MachineRuntime, type RuntimeManager } from './types';
 
@@ -38,6 +40,24 @@ class SshMachineRuntime implements MachineRuntime {
   }
 }
 
+class K8sMachineRuntime implements MachineRuntime {
+  readonly machine: MachineRef;
+  readonly git: LegacyK8sGitRuntime;
+  readonly health = new ConstantHealthSource();
+
+  constructor(
+    connectionId: string,
+    proxy: Awaited<ReturnType<typeof kubeConnectionManager.connect>>
+  ) {
+    this.machine = { kind: 'k8s', connectionId };
+    this.git = new LegacyK8sGitRuntime(proxy);
+  }
+
+  dispose(): void {
+    this.git.dispose();
+  }
+}
+
 class DefaultRuntimeManager implements RuntimeManager {
   private readonly runtimes = new ResourceMap<MachineRuntime>({
     teardown: (_key, runtime) => runtime.dispose(),
@@ -48,6 +68,10 @@ class DefaultRuntimeManager implements RuntimeManager {
   acquire(machine: MachineRef): Promise<Lease<MachineRuntime>> {
     return this.runtimes.acquire(machineKey(machine), async () => {
       if (machine.kind === 'local') return new LocalMachineRuntime();
+      if (machine.kind === 'k8s') {
+        const proxy = await kubeConnectionManager.connect(machine.connectionId);
+        return new K8sMachineRuntime(machine.connectionId, proxy);
+      }
       const proxy = await sshConnectionManager.connect(machine.connectionId);
       return new SshMachineRuntime(machine.connectionId, proxy);
     });

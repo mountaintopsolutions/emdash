@@ -4,7 +4,8 @@ import {
   DEFAULT_REMOTE_SHELL,
   normalizeRemoteShell,
   type RemoteShellProfile,
-} from '@main/core/ssh/lifecycle/remote-shell-profile';
+} from '@main/core/execution-context/remote-shell-profile';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import {
@@ -23,7 +24,8 @@ import type { ResolvedShellProfile } from './types';
 
 export type ShellTarget =
   | { kind: 'local'; platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv }
-  | { kind: 'ssh'; profile: RemoteShellProfile; proxy?: SshClientProxy };
+  | { kind: 'ssh'; profile: RemoteShellProfile; proxy?: SshClientProxy }
+  | { kind: 'k8s'; profile: RemoteShellProfile; proxy?: KubeClientProxy };
 
 export class ShellUnavailableError extends Error {
   constructor(
@@ -353,7 +355,14 @@ export async function resolveTerminalShell({
     });
   }
 
-  if (target.proxy && !(await isRemoteShellAvailable(target.proxy, intent, target.profile.env))) {
+  if (target.kind === 'k8s') {
+    if (target.proxy && !(await isK8sShellAvailable(target.proxy, intent, target.profile.env))) {
+      throw new ShellUnavailableError(intent, 'k8s');
+    }
+  } else if (
+    target.proxy &&
+    !(await isRemoteShellAvailable(target.proxy, intent, target.profile.env))
+  ) {
     throw new ShellUnavailableError(intent, 'ssh');
   }
 
@@ -502,9 +511,11 @@ export async function getLocalTerminalShellAvailability({
 }
 
 export async function getRemoteTerminalShellAvailability(
-  proxy: SshClientProxy,
+  proxy: SshClientProxy | KubeClientProxy,
   profile: RemoteShellProfile
 ): Promise<TerminalShellAvailability[]> {
+  const isK8s = isKubeProxy(proxy);
+  const targetLabel = isK8s ? 'Kubernetes pod' : 'SSH target';
   const targetDefaultShell = normalizeRemoteShell(profile.shell);
   const targetDefaultId = shellIdFromExecutable(targetDefaultShell, 'sh');
   const availability = await Promise.all(
@@ -519,17 +530,23 @@ export async function getRemoteTerminalShellAvailability(
             available: true,
           };
         }
-        const available = await isRemoteShellAvailable(proxy, shell, profile.env);
+        const available = isK8s
+          ? await isK8sShellAvailable(proxy, shell, profile.env)
+          : await isRemoteShellAvailable(proxy, shell, profile.env);
         return {
           id: shell,
           label: shell,
           isSystemDefault: false,
           available,
-          reason: available ? undefined : 'Not found on this SSH target',
+          reason: available ? undefined : `Not found on this ${targetLabel}`,
         };
       })
   );
   return sortShellAvailability(availability);
+}
+
+function isKubeProxy(proxy: SshClientProxy | KubeClientProxy): proxy is KubeClientProxy {
+  return typeof (proxy as KubeClientProxy).readFileBytes === 'function';
 }
 
 async function isRemoteShellAvailable(
@@ -544,6 +561,22 @@ async function isRemoteShellAvailable(
   const command = `${pathPrefix}command -v ${quoteShellArg(shell)} >/dev/null 2>&1`;
   try {
     const result = await execRemote(proxy, `${DEFAULT_REMOTE_SHELL} -c ${quoteShellArg(command)}`);
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+async function isK8sShellAvailable(
+  proxy: KubeClientProxy,
+  shell: ExplicitTerminalShellId,
+  env: Record<string, string>
+): Promise<boolean> {
+  if (shell === 'cmd' || shell === 'powershell' || shell === 'pwsh') return false;
+  const pathPrefix = env.PATH ? `PATH=${quoteShellArg(env.PATH)} ` : '';
+  const command = `${pathPrefix}command -v ${quoteShellArg(shell)} >/dev/null 2>&1`;
+  try {
+    const result = await proxy.exec(command);
     return result.exitCode === 0;
   } catch {
     return false;

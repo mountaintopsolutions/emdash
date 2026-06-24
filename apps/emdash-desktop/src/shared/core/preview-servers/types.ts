@@ -50,6 +50,8 @@ export function previewServerUrl(server: PreviewServer): string | null {
   return `${server.protocol}//127.0.0.1:${server.localPort}${server.urlPath}`;
 }
 
+export type PreviewServerTransport = 'ssh' | 'k8s';
+
 export type ManualPreviewServerRequest = {
   projectId: string;
   workspaceId: string;
@@ -57,6 +59,8 @@ export type ManualPreviewServerRequest = {
   protocol: PreviewServerProtocol;
   remotePort: number;
   preferredLocalPort?: number;
+  /** Remote transport to forward over. Defaults to 'ssh' when omitted. */
+  transport?: PreviewServerTransport;
 };
 
 export type ManualPreviewServerError =

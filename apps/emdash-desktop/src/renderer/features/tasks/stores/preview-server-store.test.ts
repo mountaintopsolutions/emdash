@@ -154,11 +154,42 @@ describe('PreviewServerStore', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
+      transport: 'ssh',
       protocol: 'http:',
       remotePort: 8080,
     });
     expect(result).toEqual(ok(forwarded));
     expect(store.servers.map((server) => server.id)).toEqual(['manual-1']);
+
+    store.dispose();
+  });
+
+  it('forwards manually over the k8s transport when the workspace is k8s', async () => {
+    const forwarded = forwardedServer({
+      id: 'manual-k8s-1',
+      source: { kind: 'manual' },
+      remotePort: 8080,
+      localPort: 6500,
+    });
+    rpcMocks.forwardManual.mockResolvedValueOnce(ok(forwarded));
+    rpcMocks.listForWorkspace.mockResolvedValueOnce([]);
+
+    const store = new PreviewServerStore({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'k8s-1',
+      transport: 'k8s',
+    });
+    await store.forwardManual({ protocol: 'http:', remotePort: 8080 });
+
+    expect(rpcMocks.forwardManual).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      workspaceId: 'workspace-1',
+      connectionId: 'k8s-1',
+      transport: 'k8s',
+      protocol: 'http:',
+      remotePort: 8080,
+    });
 
     store.dispose();
   });
@@ -173,7 +204,7 @@ describe('PreviewServerStore', () => {
       success: false,
       error: {
         type: 'not-ssh-workspace',
-        message: 'Manual port forwarding requires an SSH workspace',
+        message: 'Manual port forwarding requires a remote (SSH or Kubernetes) workspace',
       },
     });
 

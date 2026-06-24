@@ -1,19 +1,23 @@
-import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import {
+  type K8sPortForwardProxy,
   openPortForwardTunnel,
   type OpenPortForwardTunnelOptions,
   type PortForwardTunnel,
+  type SshPortForwardProxy,
 } from './port-forward-tunnel';
+
+type PortForwardTarget =
+  | { transport: 'ssh'; proxy: SshPortForwardProxy }
+  | { transport: 'k8s'; proxy: K8sPortForwardProxy };
 
 export type OpenPortForwardRequest = {
   id: string;
   projectId: string;
   workspaceId: string;
   connectionId: string;
-  proxy: Pick<SshClientProxy, 'client' | 'isConnected'>;
   remotePort: number;
   preferredLocalPort?: number;
-};
+} & PortForwardTarget;
 
 export type PortForwardRecord = {
   id: string;
@@ -62,7 +66,9 @@ export class PortForwardService {
     if (existing) return toRecord(existing);
 
     const tunnel = await this.openTunnel({
-      proxy: request.proxy,
+      ...(request.transport === 'k8s'
+        ? { transport: 'k8s', proxy: request.proxy }
+        : { transport: 'ssh', proxy: request.proxy }),
       remotePort: request.remotePort,
       preferredLocalPort: request.preferredLocalPort,
       onConnectionError: (error) => this.emitConnectionError(request.id, error),
