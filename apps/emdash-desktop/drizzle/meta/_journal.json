@@ -141,6 +141,13 @@
       "when": 1783057726358,
       "tag": "0019_eager_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1782935214000,
+      "tag": "0020_k8s_connections",
+      "breakpoints": true
     }
   ]
 }

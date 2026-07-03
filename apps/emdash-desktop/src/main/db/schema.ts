@@ -47,19 +47,45 @@ export const sshConnections = sqliteTable(
   })
 );
 
+export const k8sConnections = sqliteTable(
+  'k8s_connections',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    context: text('context').notNull(),
+    namespace: text('namespace').notNull(),
+    podName: text('pod_name').notNull(),
+    containerName: text('container_name'), // optional, defaults to first container in pod
+    kubeconfigPath: text('kubeconfig_path'), // optional, defaults to ~/.kube/config
+    metadata: text('metadata'), // JSON for additional connection-specific data
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    nameIdx: uniqueIndex('idx_k8s_connections_name').on(table.name),
+  })
+);
+
 export const projects = sqliteTable(
   'projects',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     path: text('path').notNull(),
-    workspaceProvider: text('workspace_provider').notNull().default('local'), // 'local' | 'ssh'
+    workspaceProvider: text('workspace_provider').notNull().default('local'), // 'local' | 'ssh' | 'k8s'
     baseRef: text('base_ref'),
     sshConnectionId: text('ssh_connection_id').references(() => sshConnections.id, {
       onDelete: 'set null',
     }),
     /** The shared workspace representing this project's repository root. Set on first mount. */
     repositoryWorkspaceId: text('repository_workspace_id'),
+    k8sConnectionId: text('k8s_connection_id').references(() => k8sConnections.id, {
+      onDelete: 'set null',
+    }),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -70,6 +96,7 @@ export const projects = sqliteTable(
   (table) => ({
     pathIdx: uniqueIndex('idx_projects_path').on(table.path),
     sshConnectionIdIdx: index('idx_projects_ssh_connection_id').on(table.sshConnectionId),
+    k8sConnectionIdIdx: index('idx_projects_k8s_connection_id').on(table.k8sConnectionId),
   })
 );
 
@@ -157,7 +184,7 @@ export const workspaces = sqliteTable(
   {
     id: text('id').primaryKey(),
     key: text('key'),
-    type: text('type').notNull().$type<'local' | 'project-ssh' | 'byoi'>(), // @deprecated — use kind + location
+    type: text('type').notNull().$type<'local' | 'project-ssh' | 'project-k8s' | 'byoi'>(), // @deprecated — use kind + location
     /** Describes the nature of the workspace: a git worktree, the project root, or BYOI. */
     kind: text('kind').$type<'worktree' | 'project-root' | 'byoi'>(),
     /** Where the workspace runs: on the local machine or over SSH. */
@@ -511,6 +538,8 @@ export const appSecrets = sqliteTable(
 
 export type SshConnectionRow = typeof sshConnections.$inferSelect;
 export type SshConnectionInsert = typeof sshConnections.$inferInsert;
+export type K8sConnectionRow = typeof k8sConnections.$inferSelect;
+export type K8sConnectionInsert = typeof k8sConnections.$inferInsert;
 export type ProjectRow = typeof projects.$inferSelect;
 export type AutomationRow = typeof automations.$inferSelect;
 export type AutomationRunRow = typeof automationRuns.$inferSelect;
