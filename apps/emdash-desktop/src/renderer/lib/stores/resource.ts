@@ -132,7 +132,8 @@ export class Resource<T, TEventData = void> {
       this.loading = true;
     });
 
-    this._inFlight = this._fetch()
+    this._inFlight = Promise.resolve()
+      .then(() => this._fetch!())
       .then((data) => {
         runInAction(() => {
           this.data = data;

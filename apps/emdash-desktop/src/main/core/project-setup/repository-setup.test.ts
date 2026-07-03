@@ -42,6 +42,12 @@ vi.mock('@main/core/runtime/runtime-manager', () => ({
   },
 }));
 
+vi.mock('@main/core/k8s/lifecycle/production-kube-connection-manager', () => ({
+  kubeConnectionManager: {
+    getProxy: vi.fn(() => null),
+  },
+}));
+
 function makeFilesRuntime() {
   return {
     path: {
