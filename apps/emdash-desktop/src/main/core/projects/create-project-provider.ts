@@ -2,6 +2,7 @@ import type { IFileSystem } from '@emdash/core/files';
 import type { IGitRepository, IGitRuntime } from '@emdash/core/git';
 import { err, ok, type Lease, type Result } from '@emdash/shared';
 import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
+import { K8sExecutionContext } from '@main/core/execution-context/k8s-execution-context';
 import { SshExecutionContext } from '@main/core/execution-context/ssh-execution-context';
 import { GitRepositoryFetchService } from '@main/core/git/repository/fetch-service';
 import { GitRepositoryService } from '@main/core/git/repository/service';
@@ -13,6 +14,8 @@ import {
 } from '@main/core/runtime/files-helpers';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
 import type { MachineRef, MachineRuntime } from '@main/core/runtime/types';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
+import type { KubeConnectionManagerEvent } from '@main/core/k8s/lifecycle/kube-connection-manager';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import type { SshConnectionManagerEvent } from '@main/core/ssh/lifecycle/ssh-connection-manager';
 import { LocalWorkspaceSetupExecutor } from '@main/core/workspaces/local-workspace-setup-executor';
@@ -21,7 +24,7 @@ import { events } from '@main/lib/events';
 import { log } from '@main/lib/logger';
 import { gitRepoUpdateChannel } from '@shared/core/git/events';
 import { safePathSegment } from '@shared/path-name';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { K8sProject, LocalProject, SshProject } from '@shared/projects';
 import { ensureEmdashGitExcludedSafe } from './ensure-emdash-excluded';
 import { ProjectProvider, type ProjectProviderTransport } from './project-provider';
 import type { ProjectSettingsProvider } from './settings/provider';
@@ -32,9 +35,11 @@ import { WorktreeService } from './worktrees/worktree-service';
 export type CreateProviderError = { message: string };
 
 export async function createProvider(
-  project: LocalProject | SshProject
+  project: LocalProject | SshProject | K8sProject
 ): Promise<Result<ProjectProvider, CreateProviderError>> {
-  return project.type === 'ssh' ? createSshProvider(project) : createLocalProvider(project);
+  if (project.type === 'ssh') return createSshProvider(project);
+  if (project.type === 'k8s') return createK8sProvider(project);
+  return createLocalProvider(project);
 }
 
 async function createLocalProvider(
@@ -193,6 +198,101 @@ async function createSshProvider(
       error: error instanceof Error ? error.message : String(error),
     });
     sshConnectionManager.reportChannelError(project.connectionId, error);
+    return err(toCreateProviderError(error));
+  }
+}
+
+async function createK8sProvider(
+  project: K8sProject
+): Promise<Result<ProjectProvider, CreateProviderError>> {
+  try {
+    const proxy = await kubeConnectionManager.connect(project.connectionId);
+
+    const baseCtx = new K8sExecutionContext(proxy, {
+      root: project.path,
+      connectionId: project.connectionId,
+    });
+    const ctx = baseCtx;
+    const projectMachine: MachineRef = { kind: 'k8s', connectionId: project.connectionId };
+    const runtimeLease = await runtimeManager.acquire(projectMachine);
+    const projectFileSystem = openFileSystem(runtimeLease.value.files);
+    if (!projectFileSystem.success) {
+      await runtimeLease.release();
+      return err({ message: projectFileSystem.error.message });
+    }
+
+    // SshProjectSettingsProvider is transport-neutral: it only uses
+    // IExecutionContext (via resolveRemoteHome) and IFileSystem.
+    const settings = new SshProjectSettingsProvider(
+      project.id,
+      projectFileSystem.data,
+      project.baseRef,
+      absoluteDirectoryFileSystem(runtimeLease.value.files),
+      project.path,
+      baseCtx
+    );
+
+    try {
+      await runLegacyProjectSettingsMigration(settings, runtimeLease.value.git, project.path);
+      const worktreeDirectory = await settings.getWorktreeDirectory();
+      const worktreePoolPath = runtimeLease.value.files.path.join(worktreeDirectory, project.name);
+      const madeWorktreePool = await ensureAbsoluteDir(runtimeLease.value.files, worktreePoolPath);
+      if (!madeWorktreePool.success) {
+        await runtimeLease.release();
+        return err({ message: madeWorktreePool.error.message });
+      }
+      const resolveWorktreePoolPath = async () =>
+        runtimeLease.value.files.path.join(await settings.getWorktreeDirectory(), project.name);
+
+      let provider: ProjectProvider | undefined;
+      const handler = (evt: KubeConnectionManagerEvent) => {
+        if (evt.type === 'reconnected' && evt.connectionId === project.connectionId) {
+          void provider?.gitRepositoryFetchService.fetch();
+        }
+      };
+      const dispose = () => {
+        kubeConnectionManager.off('connection-event', handler);
+      };
+
+      const repoLease = await runtimeLease.value.git.openRepository(project.path);
+      try {
+        provider = buildProvider(
+          project.id,
+          project.path,
+          {
+            kind: 'k8s',
+            projectMachine,
+            defaultWorkspaceType: { kind: 'k8s', proxy, connectionId: project.connectionId },
+            defaultWorkspaceMachine: projectMachine,
+            ctx,
+          },
+          runtimeLease.value.files,
+          projectFileSystem.data,
+          settings,
+          resolveWorktreePoolPath,
+          dispose,
+          runtimeLease,
+          repoLease
+        );
+        await backfillGitHubAccount(provider);
+
+        kubeConnectionManager.on('connection-event', handler);
+
+        return ok(provider);
+      } catch (error) {
+        await repoLease.release();
+        throw error;
+      }
+    } catch (error) {
+      await runtimeLease.release();
+      throw error;
+    }
+  } catch (error) {
+    log.warn('createK8sProvider: k8s connection failed', {
+      projectId: project.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    kubeConnectionManager.reportChannelError(project.connectionId, error);
     return err(toCreateProviderError(error));
   }
 }
