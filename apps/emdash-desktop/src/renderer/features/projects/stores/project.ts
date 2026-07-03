@@ -118,7 +118,7 @@ export class ProjectStore {
   }
 
   transitionToUnmounted(
-    data: LocalProject | SshProject | K8sProject | K8sProject,
+    data: LocalProject | SshProject | K8sProject,
     phase: UnmountedProjectPhase = 'opening'
   ): void {
     this.mountedProject?.dispose();
@@ -194,7 +194,7 @@ export function createUnregisteredProject(
 }
 
 export function createUnmountedProject(
-  data: LocalProject | SshProject | K8sProject | K8sProject,
+  data: LocalProject | SshProject | K8sProject,
   phase: UnmountedProjectPhase = 'opening'
 ): ProjectStore {
   return new ProjectStore('unmounted', data.id, data.name, data, phase);
