@@ -1,20 +1,25 @@
 import { LocalConversationProvider } from '@main/core/conversations/impl/local-conversation';
+import { K8sConversationProvider } from '@main/core/conversations/impl/k8s-conversation';
 import { SshConversationProvider } from '@main/core/conversations/impl/ssh-conversation';
 import type { ConversationProvider } from '@main/core/conversations/types';
 import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
+import { K8sExecutionContext } from '@main/core/execution-context/k8s-execution-context';
 import { SshExecutionContext } from '@main/core/execution-context/ssh-execution-context';
 import { FileTreeProjector } from '@main/core/files/file-tree/projector';
 import { GitRepositoryFetchService } from '@main/core/git/repository/fetch-service';
 import { GitRepositoryService } from '@main/core/git/repository/service';
 import { previewServerService } from '@main/core/preview-servers/preview-server-service-instance';
+import { invalidateLegacyK8sGitWorktreeStatus } from '@main/core/runtime/legacy/k8s-git';
 import { invalidateLegacySshGitWorktreeStatus } from '@main/core/runtime/legacy/ssh-git';
 import type { IFilesRuntime } from '@main/core/runtime/types';
 import type { MachineRef, RuntimeManager } from '@main/core/runtime/types';
 import { workspaceFileIndexService } from '@main/core/search/workspace-file-index-service';
 import { appSettingsService } from '@main/core/settings/settings-service';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import { resolveLocalAutomationShellWithSystemFallback } from '@main/core/terminal-shell/resolver';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
+import { K8sTerminalProvider } from '@main/core/terminals/impl/k8s-terminal-provider';
 import { LocalTerminalProvider } from '@main/core/terminals/impl/local-terminal-provider';
 import { SshTerminalProvider } from '@main/core/terminals/impl/ssh-terminal-provider';
 import { runLifecycleScriptWithPolicy } from '@main/core/terminals/lifecycle-script-coordinator';
@@ -35,7 +40,8 @@ import { getTaskEnvVars } from './workspace-env';
 
 export type WorkspaceType =
   | { kind: 'local' }
-  | { kind: 'ssh'; proxy: SshClientProxy; connectionId: string };
+  | { kind: 'ssh'; proxy: SshClientProxy; connectionId: string }
+  | { kind: 'k8s'; proxy: KubeClientProxy; connectionId: string };
 
 type WorkspaceFactoryContext = {
   task: Pick<Task, 'id' | 'name'>;
@@ -76,7 +82,9 @@ export function createWorkspaceFactory(
     const ctx =
       type.kind === 'ssh'
         ? new SshExecutionContext(type.proxy, { connectionId: type.connectionId })
-        : new LocalExecutionContext();
+        : type.kind === 'k8s'
+          ? new K8sExecutionContext(type.proxy, { connectionId: type.connectionId })
+          : new LocalExecutionContext();
 
     const runtime = await acquireWorkspaceRuntime(context.workspaceRuntime, workDir);
     const { gitWorktree, fileTree, filesRuntime } = runtime;
@@ -123,16 +131,29 @@ export function createWorkspaceFactory(
             connectionId: type.connectionId,
             taskEnvVars: bootstrapTaskEnvVars,
           })
-        : new LocalTerminalProvider({
-            projectId: context.projectId,
-            workspaceId,
-            scopeId: workspaceId,
-            taskPath: workDir,
-            tmux: tmuxEnabled,
-            shellSetup,
-            ctx,
-            taskEnvVars: bootstrapTaskEnvVars,
-          });
+        : type.kind === 'k8s'
+          ? new K8sTerminalProvider({
+              projectId: context.projectId,
+              workspaceId,
+              scopeId: workspaceId,
+              taskPath: workDir,
+              tmux: tmuxEnabled,
+              shellSetup,
+              ctx,
+              proxy: type.proxy,
+              connectionId: type.connectionId,
+              taskEnvVars: bootstrapTaskEnvVars,
+            })
+          : new LocalTerminalProvider({
+              projectId: context.projectId,
+              workspaceId,
+              scopeId: workspaceId,
+              taskPath: workDir,
+              tmux: tmuxEnabled,
+              shellSetup,
+              ctx,
+              taskEnvVars: bootstrapTaskEnvVars,
+            });
 
     const lifecycleService = new LifecycleScriptService({
       projectId: context.projectId,
@@ -186,7 +207,7 @@ export function createWorkspaceFactory(
 
     return {
       workspace,
-      sshFilesRuntime: type.kind === 'ssh' ? filesRuntime : undefined,
+      sshFilesRuntime: type.kind !== 'local' ? filesRuntime : undefined,
 
       onCreateSideEffect: (ws) => {
         void workspaceFileIndexService.onWorkspaceActivated(workspaceId, {
@@ -208,6 +229,8 @@ export function createWorkspaceFactory(
         const fileChanges = filesRuntime.watchChanges(workDir, (update) => {
           if (type.kind === 'ssh') {
             invalidateLegacySshGitWorktreeStatus(ws.gitWorktree);
+          } else if (type.kind === 'k8s') {
+            invalidateLegacyK8sGitWorktreeStatus(ws.gitWorktree);
           }
           events.emit(fileChangesChannel, {
             projectId: context.projectId,
@@ -417,6 +440,38 @@ export async function buildTaskProviders(
         taskEnvVars: opts.taskEnvVars,
       }),
       terminals: new SshTerminalProvider({
+        projectId: opts.projectId,
+        workspaceId: opts.workspaceId,
+        scopeId: opts.taskId,
+        taskPath: opts.taskPath,
+        tmux: opts.tmuxEnabled,
+        shellSetup: opts.shellSetup,
+        ctx,
+        proxy: type.proxy,
+        connectionId: type.connectionId,
+        taskEnvVars: opts.taskEnvVars,
+      }),
+    };
+  }
+
+  if (type.kind === 'k8s') {
+    if (!opts.filesRuntime) {
+      throw new Error('Missing k8s files runtime for k8s task provider');
+    }
+    const ctx = new K8sExecutionContext(type.proxy, { connectionId: type.connectionId });
+    return {
+      conversations: new K8sConversationProvider({
+        projectId: opts.projectId,
+        taskPath: opts.taskPath,
+        taskId: opts.taskId,
+        tmux: opts.tmuxEnabled,
+        shellSetup: opts.shellSetup,
+        ctx,
+        proxy: type.proxy,
+        filesRuntime: opts.filesRuntime,
+        taskEnvVars: opts.taskEnvVars,
+      }),
+      terminals: new K8sTerminalProvider({
         projectId: opts.projectId,
         workspaceId: opts.workspaceId,
         scopeId: opts.taskId,
