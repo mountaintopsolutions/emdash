@@ -148,6 +148,7 @@ export type TelemetryEventProperties = {
 
   open_in_external: { app: OpenInAppId | 'browser' };
   ssh_connection_attempted: { success: boolean };
+  k8s_connection_attempted: { success: boolean };
 
   mcp_server_added: { source: 'catalog' | 'custom' };
   mcp_server_removed: EmptyProps;

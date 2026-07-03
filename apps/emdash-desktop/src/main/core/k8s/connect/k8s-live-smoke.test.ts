@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { K8sFileSystem } from '@main/core/fs/impl/k8s-fs';
+import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
 import { openPortForwardTunnel } from '@main/core/port-forwards/port-forward-tunnel';
 import { K8sWorktreeHost } from '@main/core/projects/worktrees/hosts/k8s-worktree-host';
 import { openK8sPty } from '@main/core/pty/k8s-pty';
