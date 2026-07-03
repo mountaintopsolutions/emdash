@@ -1,7 +1,8 @@
 import net from 'node:net';
 import { PassThrough } from 'node:stream';
-import { PortForward } from '@kubernetes/client-node';
+import { PortForward, type KubeConfig } from '@kubernetes/client-node';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import type { KubeTarget } from '@main/core/k8s/connect/resolve-kube-connect-config';
 
 const LOCAL_BIND_HOST = '127.0.0.1';
 
@@ -98,8 +99,8 @@ function forwardSocket(
     return;
   }
 
-  let kc: ReturnType<KubeClientProxy['kubeConfig']>;
-  let target: KubeClientProxy['target'];
+  let kc: KubeConfig;
+  let target: KubeTarget;
   try {
     kc = options.proxy.kubeConfig;
     target = options.proxy.target;
