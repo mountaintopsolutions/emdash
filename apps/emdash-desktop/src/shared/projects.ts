@@ -72,7 +72,10 @@ export type CreateK8sProjectParams = {
   initGitRepository?: boolean;
 };
 
-export type CreateProjectParams = CreateLocalProjectParams | CreateSshProjectParams | CreateK8sProjectParams;
+export type CreateProjectParams =
+  | CreateLocalProjectParams
+  | CreateSshProjectParams
+  | CreateK8sProjectParams;
 
 export type CreateProjectError =
   | { type: 'invalid-directory'; path: string; message: string }

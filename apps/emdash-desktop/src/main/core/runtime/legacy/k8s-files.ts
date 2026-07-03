@@ -20,16 +20,14 @@ import {
 } from '@emdash/core/files';
 import { LiveCollection, ResourceMap, type KeyedOp } from '@emdash/core/lib';
 import { err, ok, type Result, type Unsubscribe } from '@emdash/shared';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { IFilesRuntime } from '@main/core/runtime/types';
 import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { log } from '@main/lib/logger';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import type { FileWatchEvent } from '@shared/core/fs/fs';
 import { LegacyK8sFileSystem } from './k8s-file-system';
 import { K8sFileSystem } from './k8s-legacy-fs';
-import { FileSystemError, FileSystemErrorCodes } from './ssh-legacy-fs-types';
-import type { FileEntry } from './ssh-legacy-fs-types';
 import {
   containsRemotePath,
   isIgnoredRemotePath,
@@ -38,6 +36,8 @@ import {
   toRemoteAbsolutePath,
 } from './k8s-paths';
 import { buildK8sFindPruneExpression } from './k8s-remote-enumerate';
+import { FileSystemError, FileSystemErrorCodes } from './ssh-legacy-fs-types';
+import type { FileEntry } from './ssh-legacy-fs-types';
 
 const K8S_FILE_TREE_POLL_MS = 4_000;
 const K8S_FILE_CHANGE_POLL_MS = 4_000;
@@ -289,10 +289,7 @@ class LegacyK8sRecursiveChangeFeed implements ChangeFeedHandle {
 
   private async scan(): Promise<Result<Map<string, LegacyK8sSnapshotEntry>, FileError>> {
     try {
-      const result = await execRemoteK8s(
-        this.proxy,
-        buildRecursiveSnapshotCommand(this.rootPath)
-      );
+      const result = await execRemoteK8s(this.proxy, buildRecursiveSnapshotCommand(this.rootPath));
       if (result.exitCode !== 0) {
         return err({
           type: 'fs-error',

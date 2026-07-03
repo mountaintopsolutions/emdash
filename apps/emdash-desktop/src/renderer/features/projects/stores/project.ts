@@ -105,7 +105,10 @@ export class ProjectStore {
     makeAutoObservable(this, { mountedProject: observable.ref });
   }
 
-  transitionToMounted(data: LocalProject | SshProject | K8sProject, savedSnapshot?: ProjectViewSnapshot): void {
+  transitionToMounted(
+    data: LocalProject | SshProject | K8sProject,
+    savedSnapshot?: ProjectViewSnapshot
+  ): void {
     this.mountedProject = new MountedProject(data, savedSnapshot);
     this.data = data;
     this.id = data.id;

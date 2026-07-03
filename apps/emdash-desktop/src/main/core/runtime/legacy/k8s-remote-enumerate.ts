@@ -1,9 +1,9 @@
 import { StringDecoder } from 'node:string_decoder';
-import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import { quoteShellArg } from '@main/utils/shellEscape';
-import { LEGACY_SSH_IGNORED_PATH_SEGMENTS } from './ssh-ignored-paths';
 import { isIgnoredRemotePath, toRemoteAbsolutePath } from './k8s-paths';
+import { LEGACY_SSH_IGNORED_PATH_SEGMENTS } from './ssh-ignored-paths';
 
 /**
  * Enumerate all non-ignored files under `rootPath` in the pod, yielding absolute
@@ -50,10 +50,7 @@ done
  * arrive. Uses execStreaming so the enumeration streams incrementally rather
  * than buffering the whole workspace listing.
  */
-async function* execK8sNulFields(
-  proxy: KubeClientProxy,
-  command: string
-): AsyncIterable<string> {
+async function* execK8sNulFields(proxy: KubeClientProxy, command: string): AsyncIterable<string> {
   const profile = await proxy.getRemoteShellProfile();
   const fullCommand = buildRemoteShellCommand(profile, command);
   const decoder = new StringDecoder('utf8');

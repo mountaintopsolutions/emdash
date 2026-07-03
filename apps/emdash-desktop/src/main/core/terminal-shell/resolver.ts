@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import {
   DEFAULT_REMOTE_SHELL,
   normalizeRemoteShell,
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
-import { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import {
   isRuntimeTerminalShellId,

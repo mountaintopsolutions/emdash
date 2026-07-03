@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FALLBACK_REMOTE_SHELL_PROFILE } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { ExecResult } from '@shared/kubernetes';
-import type { FileEntry, FileListResult } from './ssh-legacy-fs-types';
 import { K8sFileSystem } from './k8s-legacy-fs';
+import type { FileEntry, FileListResult } from './ssh-legacy-fs-types';
 
 function listResult(entries: FileEntry[]): FileListResult {
   return { entries, total: entries.length };

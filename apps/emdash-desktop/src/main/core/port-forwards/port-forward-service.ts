@@ -1,15 +1,15 @@
-import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
-import {
-  openPortForwardTunnel,
-  type OpenPortForwardTunnelOptions,
-  type PortForwardTunnel,
-} from './port-forward-tunnel';
+import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
 import {
   openK8sPortForwardTunnel,
   type OpenK8sPortForwardTunnelOptions,
   type K8sPortForwardTunnel,
 } from './k8s-port-forward-tunnel';
+import {
+  openPortForwardTunnel,
+  type OpenPortForwardTunnelOptions,
+  type PortForwardTunnel,
+} from './port-forward-tunnel';
 
 export type OpenPortForwardRequest = {
   id: string;

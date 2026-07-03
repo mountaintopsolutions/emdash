@@ -1,9 +1,9 @@
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import {
   buildRemoteShellCommand,
   FALLBACK_REMOTE_SHELL_PROFILE,
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { getGitExecutable } from '@main/core/utils/exec';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import { NON_INTERACTIVE_GIT_ENV } from './non-interactive-git-env';

@@ -1,12 +1,14 @@
 import type { IFileSystem } from '@emdash/core/files';
 import type { IGitRepository, IGitRuntime } from '@emdash/core/git';
 import { err, ok, type Lease, type Result } from '@emdash/shared';
-import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
 import { K8sExecutionContext } from '@main/core/execution-context/k8s-execution-context';
+import { LocalExecutionContext } from '@main/core/execution-context/local-execution-context';
 import { SshExecutionContext } from '@main/core/execution-context/ssh-execution-context';
 import { GitRepositoryFetchService } from '@main/core/git/repository/fetch-service';
 import { GitRepositoryService } from '@main/core/git/repository/service';
 import { projectGitHubAccountBackfillService } from '@main/core/github/services/project-github-account-backfill-instance';
+import type { KubeConnectionManagerEvent } from '@main/core/k8s/lifecycle/kube-connection-manager';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import {
   absoluteDirectoryFileSystem,
   ensureAbsoluteDir,
@@ -14,8 +16,6 @@ import {
 } from '@main/core/runtime/files-helpers';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
 import type { MachineRef, MachineRuntime } from '@main/core/runtime/types';
-import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
-import type { KubeConnectionManagerEvent } from '@main/core/k8s/lifecycle/kube-connection-manager';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import type { SshConnectionManagerEvent } from '@main/core/ssh/lifecycle/ssh-connection-manager';
 import { LocalWorkspaceSetupExecutor } from '@main/core/workspaces/local-workspace-setup-executor';

@@ -1,4 +1,7 @@
 import type { IExecutionContext } from '@main/core/execution-context/types';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import type { KubeConnectionManagerEvent } from '@main/core/k8s/lifecycle/kube-connection-manager';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { previewServerService } from '@main/core/preview-servers/preview-server-service-instance';
 import { wireTerminalUrlDetector } from '@main/core/preview-servers/terminal-url-detector';
 import { isUnexpectedPtyExit } from '@main/core/pty/exit-classification';
@@ -9,9 +12,6 @@ import { resolveSshCommand } from '@main/core/pty/spawn-utils';
 import { getTerminalColorEnv } from '@main/core/pty/terminal-color-scheme';
 import { killTmuxSessionTree } from '@main/core/pty/tmux-reaper';
 import { makeTmuxSessionName } from '@main/core/pty/tmux-session-name';
-import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
-import type { KubeConnectionManagerEvent } from '@main/core/k8s/lifecycle/kube-connection-manager';
 import { resolveTerminalShellWithSystemFallback } from '@main/core/terminal-shell/resolver';
 import type { ResolvedShellProfile } from '@main/core/terminal-shell/types';
 import {

@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon } from 'lucide-react';
+import { ChevronsUpDownIcon, TriangleAlert } from 'lucide-react';
 import { useId } from 'react';
 import { GithubAuthDisclaimer } from '@renderer/features/integrations/components/github-auth-disclaimer';
 import { ComboboxTrigger, ComboboxValue } from '@renderer/lib/ui/combobox';
@@ -261,6 +261,16 @@ export function ClonePanel({
           )}
         </Field>
       </FieldGroup>
+      {strategy !== 'local' && (
+        <div className="flex items-start gap-2 rounded-md border border-border-warning bg-background-warning/50 px-3 py-2 text-xs text-foreground-muted">
+          <TriangleAlert className="mt-px size-3.5 shrink-0 text-foreground-warning" />
+          <span>
+            Git must be installed and authenticated on the{' '}
+            {strategy === 'k8s' ? 'pod' : 'remote host'} to clone private repositories. Ensure SSH
+            keys or credentials are configured before cloning.
+          </span>
+        </div>
+      )}
     </div>
   );
 }

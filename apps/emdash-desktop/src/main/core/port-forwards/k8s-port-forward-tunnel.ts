@@ -1,8 +1,8 @@
 import net from 'node:net';
 import { PassThrough } from 'node:stream';
 import { PortForward, type KubeConfig } from '@kubernetes/client-node';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import type { KubeTarget } from '@main/core/k8s/connect/resolve-kube-connect-config';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 
 const LOCAL_BIND_HOST = '127.0.0.1';
 
@@ -128,9 +128,7 @@ function forwardSocket(
   pf.portForward(target.namespace, target.podName, [options.remotePort], stdout, stderr, stdin)
     .then((ws) => {
       const socketLike =
-        typeof ws === 'function'
-          ? { close: () => ws()?.close() }
-          : { close: () => ws.close() };
+        typeof ws === 'function' ? { close: () => ws()?.close() } : { close: () => ws.close() };
       webSockets.add(socketLike);
 
       if (typeof ws !== 'function') {

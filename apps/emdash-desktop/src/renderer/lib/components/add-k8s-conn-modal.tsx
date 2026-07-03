@@ -1,4 +1,4 @@
-import { useForm } from '@tanstack/react-form';
+import { useForm, useStore } from '@tanstack/react-form';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftIcon,
@@ -126,7 +126,7 @@ export function AddK8sConnModal({
     }
   }, [onlyContext, form]);
 
-  const selectedContext = form.state.values.context;
+  const selectedContext = useStore(form.store, (state) => state.values.context);
   // Namespace/pod listing can be denied by RBAC (namespace-scoped users often
   // cannot list cluster namespaces) or be slow, so these power optional
   // suggestions only — the fields stay free-text. retry:false surfaces failures
@@ -139,7 +139,7 @@ export function AddK8sConnModal({
   });
   const namespaces = namespacesQuery.data ?? [];
 
-  const selectedNamespace = form.state.values.namespace;
+  const selectedNamespace = useStore(form.store, (state) => state.values.namespace);
   const podsQuery = useQuery({
     queryKey: ['k8sPods', trimmedKubeconfigPath, selectedContext, selectedNamespace],
     queryFn: () =>
@@ -149,7 +149,8 @@ export function AddK8sConnModal({
   });
   const pods = podsQuery.data ?? [];
 
-  const selectedPod = pods.find((pod) => pod.name === form.state.values.podName);
+  const selectedPodName = useStore(form.store, (state) => state.values.podName);
+  const selectedPod = pods.find((pod) => pod.name === selectedPodName);
   const containers = selectedPod?.containers ?? [];
 
   const buildTestConfig = (): K8sConfig => {

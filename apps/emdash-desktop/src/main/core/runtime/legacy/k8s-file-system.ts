@@ -15,9 +15,9 @@ import { err, ok, type Result } from '@emdash/shared';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import { K8sFileSystem } from './k8s-legacy-fs';
-import { FileSystemError, FileSystemErrorCodes, type FileEntry } from './ssh-legacy-fs-types';
 import { normalizeRemoteAbsolutePath } from './k8s-paths';
 import { enumerateRemoteK8sWorkspace } from './k8s-remote-enumerate';
+import { FileSystemError, FileSystemErrorCodes, type FileEntry } from './ssh-legacy-fs-types';
 
 const DEFAULT_MAX_BYTES = 200 * 1024;
 const MAX_READ_BYTES = 100 * 1024 * 1024;

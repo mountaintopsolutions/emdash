@@ -15,8 +15,8 @@
  * live in @emdash/core/files and are exposed through the files runtime.
  */
 
-import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import { buildRemoteShellCommand } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import type { FileWatchEvent } from '@shared/core/fs/fs';
 import {

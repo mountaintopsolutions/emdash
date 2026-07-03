@@ -13,10 +13,10 @@ import type {
   PreviewServerSource,
 } from '@shared/core/preview-servers/types';
 import type { ConnectionState } from '@shared/core/ssh/ssh';
+import type { KubeClientProxy } from '../k8s/lifecycle/kube-client-proxy';
 import { PortForwardService } from '../port-forwards/port-forward-service';
 import type { PortForwardRecord } from '../port-forwards/port-forward-service';
 import type { SshClientProxy } from '../ssh/lifecycle/ssh-client-proxy';
-import type { KubeClientProxy } from '../k8s/lifecycle/kube-client-proxy';
 import type { SshConnectionManagerEvent } from '../ssh/lifecycle/ssh-connection-manager';
 import type { DetectedPreviewUrl, PreviewSourceClosed } from './terminal-url-detector';
 

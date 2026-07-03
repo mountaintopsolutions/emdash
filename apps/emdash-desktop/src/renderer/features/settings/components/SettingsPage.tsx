@@ -8,12 +8,12 @@ import { BrowserSettingsCard } from './BrowserSettingsCard';
 import HiddenToolsSettingsCard from './HiddenToolsSettingsCard';
 import IntegrationsCard from './IntegrationsCard';
 import InterfaceSettingsCard from './InterfaceSettingsCard';
+import { K8sConnectionsSettingsCard } from './K8sConnectionsSettingsCard';
 import KeyboardSettingsCard from './KeyboardSettingsCard';
 import NotificationSettingsCard from './NotificationSettingsCard';
 import RepositorySettingsCard from './RepositorySettingsCard';
 import ResourceMonitorSettingsCard from './ResourceMonitorSettingsCard';
 import SidebarMetadataSettingsCard from './SidebarMetadataSettingsCard';
-import { K8sConnectionsSettingsCard } from './K8sConnectionsSettingsCard';
 import { SshConnectionsSettingsCard } from './SshConnectionsSettingsCard';
 import { StorageSettingsPage } from './StorageSettingsPage';
 import {

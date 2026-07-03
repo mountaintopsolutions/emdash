@@ -5,16 +5,16 @@ import { resolveAgentSessionCommandArgs } from '@main/core/conversations/resolve
 import type { ConversationProvider } from '@main/core/conversations/types';
 import { hostDependencyStore } from '@main/core/dependencies/host-dependency-store';
 import type { IExecutionContext } from '@main/core/execution-context/types';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import { openK8sPty } from '@main/core/pty/k8s-pty';
 import type { Pty } from '@main/core/pty/pty';
 import { ptySessionRegistry } from '@main/core/pty/pty-session-registry';
 import { resolveSshCommand } from '@main/core/pty/spawn-utils';
-import { openK8sPty } from '@main/core/pty/k8s-pty';
 import { getTerminalColorEnv } from '@main/core/pty/terminal-color-scheme';
 import { killTmuxSessionTree } from '@main/core/pty/tmux-reaper';
 import { makeTmuxSessionName } from '@main/core/pty/tmux-session-name';
 import type { IFilesRuntime } from '@main/core/runtime/types';
 import { providerOverrideSettings } from '@main/core/settings/provider-settings-service';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { events } from '@main/lib/events';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';

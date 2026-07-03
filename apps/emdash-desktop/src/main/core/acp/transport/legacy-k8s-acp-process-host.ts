@@ -14,9 +14,9 @@ import {
   buildK8sCommand,
   K8sExecutionContext,
 } from '@main/core/execution-context/k8s-execution-context';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { buildAgentEnv } from '@main/core/pty/pty-env';
 import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 
 // ---------------------------------------------------------------------------

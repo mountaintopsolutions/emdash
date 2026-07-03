@@ -1,10 +1,10 @@
 import { err, ok, type Result } from '@emdash/shared';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import {
   buildRemoteShellCommand,
   FALLBACK_REMOTE_SHELL_PROFILE,
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { log } from '@main/lib/logger';
 import type { Pty, PtyDimensions, PtyExitInfo } from './pty';
 

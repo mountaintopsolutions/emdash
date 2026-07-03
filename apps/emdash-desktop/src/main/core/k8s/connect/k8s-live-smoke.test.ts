@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
 import { openK8sPty } from '@main/core/pty/k8s-pty';
+import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
 import {
   listKubeConfigContexts,
   listNamespacesForContext,
