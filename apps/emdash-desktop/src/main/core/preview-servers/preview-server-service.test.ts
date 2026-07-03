@@ -24,7 +24,7 @@ function createService(
   let openedTunnels = 0;
   let connectionState = options.connectionState ?? 'connected';
   const portForwards = new PortForwardService({
-    openTunnel:
+    openSshTunnel:
       options.openTunnel ??
       (async () => {
         openedTunnels++;

@@ -15,7 +15,7 @@ describe('PortForwardService', () => {
   it('deduplicates opens by id and closes the tunnel once', async () => {
     const close = vi.fn();
     const service = new PortForwardService({
-      openTunnel: vi.fn(async () => ({ localPort: 6100, close })),
+      openSshTunnel: vi.fn(async () => ({ localPort: 6100, close })),
     });
 
     const first = await service.open({
@@ -23,6 +23,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
+      transport: 'ssh',
       proxy: fakeProxy(),
       remotePort: 5173,
     });
@@ -31,6 +32,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
+      transport: 'ssh',
       proxy: fakeProxy(),
       remotePort: 5173,
     });
@@ -47,7 +49,7 @@ describe('PortForwardService', () => {
     const closeFirst = vi.fn();
     const closeSecond = vi.fn();
     const service = new PortForwardService({
-      openTunnel: vi
+      openSshTunnel: vi
         .fn()
         .mockResolvedValueOnce({ localPort: 6100, close: closeFirst })
         .mockResolvedValueOnce({ localPort: 6101, close: closeSecond }),
@@ -58,6 +60,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-1',
       connectionId: 'ssh-1',
+      transport: 'ssh',
       proxy: fakeProxy(),
       remotePort: 5173,
     });
@@ -66,6 +69,7 @@ describe('PortForwardService', () => {
       projectId: 'project-1',
       workspaceId: 'workspace-2',
       connectionId: 'ssh-1',
+      transport: 'ssh',
       proxy: fakeProxy(),
       remotePort: 5174,
     });

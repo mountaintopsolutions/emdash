@@ -149,6 +149,7 @@ export class PreviewServerService {
         projectId: target.projectId,
         workspaceId: target.workspaceId,
         connectionId: target.connectionId,
+        transport: 'ssh',
         proxy: target.proxy,
         remotePort: target.port,
         preferredLocalPort: target.port,
@@ -189,10 +190,11 @@ export class PreviewServerService {
   private async registerK8sTarget(
     target: Extract<RegisterDetectedPreviewTarget, { transport: 'k8s' }>
   ): Promise<PreviewServer> {
-    // TODO(Phase 10): implement k8s port-forward tunnel via KubeClientProxy.kubeConfig.
-    // The PortForward class from @kubernetes/client-node creates a WebSocket-based
-    // tunnel to a pod port, analogous to SSH's forwardIn().
     const identity = `k8s-preview:${target.connectionId}:${target.port}`;
+    const existing = this.serverForIdentity(identity);
+    if (existing) return existing;
+
+    const tunnelId = `preview:${identity}`;
     const server: PreviewServer = {
       id: identity,
       kind: 'forwarded',
@@ -201,12 +203,54 @@ export class PreviewServerService {
       source: target.source,
       protocol: target.protocol,
       urlPath: target.urlPath,
-      status: { kind: 'failed', message: 'K8s preview forwarding not yet implemented' },
+      status: { kind: 'starting' },
       connectionId: target.connectionId,
       remotePort: target.port,
     };
-    this.addServer(identity, server, { identity });
-    return server;
+    this.addServer(identity, server, { identity, tunnelId });
+
+    try {
+      const forward = await this.portForwards.open({
+        id: tunnelId,
+        projectId: target.projectId,
+        workspaceId: target.workspaceId,
+        connectionId: target.connectionId,
+        transport: 'k8s',
+        proxy: target.proxy,
+        remotePort: target.port,
+        preferredLocalPort: target.port,
+      });
+      const current = this.servers.get(server.id);
+      if (!current || current.kind !== 'forwarded') {
+        await this.portForwards.stop(tunnelId);
+        return server;
+      }
+      const next: PreviewServer = {
+        ...current,
+        localPort: forward.localPort,
+        status: { kind: 'ready' },
+      };
+      this.servers.set(next.id, next);
+      this.emit({ type: 'upsert', server: next });
+      return next;
+    } catch (error) {
+      log.warn('PreviewServerService: failed to open k8s preview tunnel', {
+        projectId: target.projectId,
+        workspaceId: target.workspaceId,
+        connectionId: target.connectionId,
+        remotePort: target.port,
+        error: String(error),
+      });
+      const current = this.servers.get(server.id);
+      if (!current || current.kind !== 'forwarded') return server;
+      const next: PreviewServer = {
+        ...current,
+        status: { kind: 'failed', message: 'Failed to open k8s port forward' },
+      };
+      this.servers.set(next.id, next);
+      this.emit({ type: 'upsert', server: next });
+      return next;
+    }
   }
 
   listForWorkspace({
@@ -358,6 +402,7 @@ export class PreviewServerService {
         projectId: server.projectId,
         workspaceId: server.workspaceId,
         connectionId: server.connectionId,
+        transport: 'ssh',
         proxy,
         remotePort: server.remotePort,
         preferredLocalPort: server.localPort ?? server.remotePort,
@@ -501,7 +546,7 @@ export class PreviewServerService {
     preferredLocalPort: number;
   }): Promise<Result<PortForwardRecord, ManualPreviewServerError>> {
     try {
-      return ok(await this.portForwards.open(request));
+      return ok(await this.portForwards.open({ ...request, transport: 'ssh' }));
     } catch (error) {
       log.warn('PreviewServerService: failed to open manual SSH preview tunnel', {
         projectId: request.projectId,

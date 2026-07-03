@@ -1,19 +1,27 @@
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import {
   openPortForwardTunnel,
   type OpenPortForwardTunnelOptions,
   type PortForwardTunnel,
 } from './port-forward-tunnel';
+import {
+  openK8sPortForwardTunnel,
+  type OpenK8sPortForwardTunnelOptions,
+  type K8sPortForwardTunnel,
+} from './k8s-port-forward-tunnel';
 
 export type OpenPortForwardRequest = {
   id: string;
   projectId: string;
   workspaceId: string;
   connectionId: string;
-  proxy: Pick<SshClientProxy, 'client' | 'isConnected'>;
   remotePort: number;
   preferredLocalPort?: number;
-};
+} & (
+  | { transport: 'ssh'; proxy: Pick<SshClientProxy, 'client' | 'isConnected'> }
+  | { transport: 'k8s'; proxy: Pick<KubeClientProxy, 'kubeConfig' | 'target' | 'isConnected'> }
+);
 
 export type PortForwardRecord = {
   id: string;
@@ -25,27 +33,32 @@ export type PortForwardRecord = {
 };
 
 type PortForwardEntry = PortForwardRecord & {
-  tunnel: PortForwardTunnel;
+  tunnel: PortForwardTunnel | K8sPortForwardTunnel;
 };
 
 export type PortForwardConnectionErrorHandler = (id: string, error: Error) => void;
 
 export class PortForwardService {
   private readonly tunnels = new Map<string, PortForwardEntry>();
-  private readonly openTunnel: (
+  private readonly openSshTunnel: (
     request: OpenPortForwardTunnelOptions
   ) => Promise<PortForwardTunnel>;
+  private readonly openK8sTunnel: (
+    request: OpenK8sPortForwardTunnelOptions
+  ) => Promise<K8sPortForwardTunnel>;
   private readonly onTunnelClosed?: (id: string) => void;
   private readonly connectionErrorHandlers = new Set<PortForwardConnectionErrorHandler>();
 
   constructor(
     options: {
-      openTunnel?: (request: OpenPortForwardTunnelOptions) => Promise<PortForwardTunnel>;
+      openSshTunnel?: (request: OpenPortForwardTunnelOptions) => Promise<PortForwardTunnel>;
+      openK8sTunnel?: (request: OpenK8sPortForwardTunnelOptions) => Promise<K8sPortForwardTunnel>;
       onTunnelClosed?: (id: string) => void;
       onConnectionError?: PortForwardConnectionErrorHandler;
     } = {}
   ) {
-    this.openTunnel = options.openTunnel ?? openPortForwardTunnel;
+    this.openSshTunnel = options.openSshTunnel ?? openPortForwardTunnel;
+    this.openK8sTunnel = options.openK8sTunnel ?? openK8sPortForwardTunnel;
     this.onTunnelClosed = options.onTunnelClosed;
     if (options.onConnectionError) {
       this.connectionErrorHandlers.add(options.onConnectionError);
@@ -61,12 +74,23 @@ export class PortForwardService {
     const existing = this.tunnels.get(request.id);
     if (existing) return toRecord(existing);
 
-    const tunnel = await this.openTunnel({
-      proxy: request.proxy,
-      remotePort: request.remotePort,
-      preferredLocalPort: request.preferredLocalPort,
-      onConnectionError: (error) => this.emitConnectionError(request.id, error),
-    });
+    const onConnectionError = (error: Error) => this.emitConnectionError(request.id, error);
+
+    const tunnel =
+      request.transport === 'k8s'
+        ? await this.openK8sTunnel({
+            proxy: request.proxy,
+            remotePort: request.remotePort,
+            preferredLocalPort: request.preferredLocalPort,
+            onConnectionError,
+          })
+        : await this.openSshTunnel({
+            proxy: request.proxy,
+            remotePort: request.remotePort,
+            preferredLocalPort: request.preferredLocalPort,
+            onConnectionError,
+          });
+
     const entry: PortForwardEntry = {
       id: request.id,
       projectId: request.projectId,
