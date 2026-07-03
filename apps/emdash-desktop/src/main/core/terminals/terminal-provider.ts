@@ -20,7 +20,7 @@ export type TerminalSpawnOptions = {
 };
 
 export interface TerminalProvider {
-  readonly kind: 'local' | 'ssh';
+  readonly kind: 'local' | 'ssh' | 'k8s';
   spawnTerminal(
     terminal: Terminal,
     initialSize?: { cols: number; rows: number },

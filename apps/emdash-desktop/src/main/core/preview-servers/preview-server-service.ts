@@ -16,6 +16,7 @@ import type { ConnectionState } from '@shared/core/ssh/ssh';
 import { PortForwardService } from '../port-forwards/port-forward-service';
 import type { PortForwardRecord } from '../port-forwards/port-forward-service';
 import type { SshClientProxy } from '../ssh/lifecycle/ssh-client-proxy';
+import type { KubeClientProxy } from '../k8s/lifecycle/kube-client-proxy';
 import type { SshConnectionManagerEvent } from '../ssh/lifecycle/ssh-connection-manager';
 import type { DetectedPreviewUrl, PreviewSourceClosed } from './terminal-url-detector';
 
@@ -40,13 +41,24 @@ export type RegisterDetectedPreviewTarget =
       protocol: PreviewServerProtocol;
       port: number;
       urlPath: string;
+    }
+  | {
+      projectId: string;
+      workspaceId: string;
+      transport: 'k8s';
+      connectionId: string;
+      proxy: Pick<KubeClientProxy, 'kubeConfig' | 'target' | 'isConnected'>;
+      source: PreviewServerSource;
+      protocol: PreviewServerProtocol;
+      port: number;
+      urlPath: string;
     };
 
 export type TerminalSourceClosedInput = {
   projectId: string;
   workspaceId: string;
   terminalId: string;
-  transport: 'local' | 'ssh';
+  transport: 'local' | 'ssh' | 'k8s';
   connectionId?: string;
   reason: PreviewSourceClosed['reason'];
   server?: DetectedPreviewUrl;
@@ -100,6 +112,10 @@ export class PreviewServerService {
   async registerDetectedTarget(target: RegisterDetectedPreviewTarget): Promise<PreviewServer> {
     if (target.transport === 'local') {
       return this.registerLocalTarget(target);
+    }
+
+    if (target.transport === 'k8s') {
+      return await this.registerK8sTarget(target);
     }
 
     return await this.registerSshTarget(target);
@@ -168,6 +184,29 @@ export class PreviewServerService {
       this.emit({ type: 'upsert', server: next });
       return next;
     }
+  }
+
+  private async registerK8sTarget(
+    target: Extract<RegisterDetectedPreviewTarget, { transport: 'k8s' }>
+  ): Promise<PreviewServer> {
+    // TODO(Phase 10): implement k8s port-forward tunnel via KubeClientProxy.kubeConfig.
+    // The PortForward class from @kubernetes/client-node creates a WebSocket-based
+    // tunnel to a pod port, analogous to SSH's forwardIn().
+    const identity = `k8s-preview:${target.connectionId}:${target.port}`;
+    const server: PreviewServer = {
+      id: identity,
+      kind: 'forwarded',
+      projectId: target.projectId,
+      workspaceId: target.workspaceId,
+      source: target.source,
+      protocol: target.protocol,
+      urlPath: target.urlPath,
+      status: { kind: 'failed', message: 'K8s preview forwarding not yet implemented' },
+      connectionId: target.connectionId,
+      remotePort: target.port,
+    };
+    this.addServer(identity, server, { identity });
+    return server;
   }
 
   listForWorkspace({

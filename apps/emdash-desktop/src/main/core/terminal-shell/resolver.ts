@@ -6,6 +6,7 @@ import {
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
+import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import {
   isRuntimeTerminalShellId,
@@ -23,7 +24,8 @@ import type { ResolvedShellProfile } from './types';
 
 export type ShellTarget =
   | { kind: 'local'; platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv }
-  | { kind: 'ssh'; profile: RemoteShellProfile; proxy?: SshClientProxy };
+  | { kind: 'ssh'; profile: RemoteShellProfile; proxy?: SshClientProxy }
+  | { kind: 'k8s'; profile: RemoteShellProfile; proxy?: KubeClientProxy };
 
 export class ShellUnavailableError extends Error {
   constructor(
@@ -354,7 +356,7 @@ export async function resolveTerminalShell({
   }
 
   if (target.proxy && !(await isRemoteShellAvailable(target.proxy, intent, target.profile.env))) {
-    throw new ShellUnavailableError(intent, 'ssh');
+    throw new ShellUnavailableError(intent, target.kind);
   }
 
   return buildProfile({
@@ -533,7 +535,7 @@ export async function getRemoteTerminalShellAvailability(
 }
 
 async function isRemoteShellAvailable(
-  proxy: SshClientProxy,
+  proxy: SshClientProxy | KubeClientProxy,
   shell: ExplicitTerminalShellId,
   env: Record<string, string>
 ): Promise<boolean> {
@@ -569,9 +571,16 @@ function sortShellAvailability(entries: TerminalShellAvailability[]): TerminalSh
 }
 
 function execRemote(
-  proxy: SshClientProxy,
+  proxy: SshClientProxy | KubeClientProxy,
   command: string
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  if (proxy instanceof KubeClientProxy) {
+    return proxy.exec(command).then((result) => ({
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }));
+  }
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
