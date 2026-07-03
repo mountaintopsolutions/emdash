@@ -1,7 +1,7 @@
 import { makeAutoObservable, observable } from 'mobx';
 import { TaskManagerStore } from '@renderer/features/tasks/stores/task-manager';
 import { snapshotRegistry } from '@renderer/lib/stores/snapshot-registry';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { K8sProject, LocalProject, SshProject } from '@shared/projects';
 import type { ProjectViewSnapshot } from '@shared/view-state';
 import { GitRepositoryStore } from './git-repository-store';
 import { PrSyncStore } from './pr-sync-store';
@@ -83,7 +83,7 @@ export class ProjectStore {
   createdAt: string;
   phase: UnregisteredProjectPhase | UnmountedProjectPhase | null;
   error: string | undefined = undefined;
-  errorCode: 'path-not-found' | 'ssh-disconnected' | undefined = undefined;
+  errorCode: 'path-not-found' | 'ssh-disconnected' | 'k8s-disconnected' | undefined = undefined;
   mode: ProjectMode | null;
   mountedProject: MountedProject | null = null;
 
@@ -118,7 +118,7 @@ export class ProjectStore {
   }
 
   transitionToUnmounted(
-    data: LocalProject | SshProject,
+    data: LocalProject | SshProject | K8sProject,
     phase: UnmountedProjectPhase = 'opening'
   ): void {
     this.mountedProject?.dispose();
@@ -165,7 +165,7 @@ export type UnmountedProject = ProjectStore & {
   data: LocalProject | SshProject;
   phase: UnmountedProjectPhase;
   error: string | undefined;
-  errorCode: 'path-not-found' | 'ssh-disconnected' | undefined;
+  errorCode: 'path-not-found' | 'ssh-disconnected' | 'k8s-disconnected' | undefined;
 };
 
 export function isUnregisteredProject(p: ProjectStore): p is UnregisteredProject {
@@ -194,7 +194,7 @@ export function createUnregisteredProject(
 }
 
 export function createUnmountedProject(
-  data: LocalProject | SshProject,
+  data: LocalProject | SshProject | K8sProject,
   phase: UnmountedProjectPhase = 'opening'
 ): ProjectStore {
   return new ProjectStore('unmounted', data.id, data.name, data, phase);
