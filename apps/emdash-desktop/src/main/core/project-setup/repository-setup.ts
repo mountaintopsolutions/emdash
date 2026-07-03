@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { FileError, IFileSystem } from '@emdash/core/files';
 import type { CloneRepositoryError, GitHeadModel, IGitWorktree } from '@emdash/core/git';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { ensureAbsoluteDir, openFileSystem, statAbsolute } from '@main/core/runtime/files-helpers';
 import { runtimeManager } from '@main/core/runtime/runtime-manager';
 import type { IFilesRuntime } from '@main/core/runtime/types';
@@ -22,11 +23,14 @@ export type InitializeProjectRepositoryParams = {
 };
 
 function machineForConnection(connectionId: string | undefined): MachineRef {
-  return connectionId ? { kind: 'ssh', connectionId } : { kind: 'local' };
+  if (!connectionId) return { kind: 'local' };
+  return kubeConnectionManager.getProxy(connectionId)
+    ? { kind: 'k8s', connectionId }
+    : { kind: 'ssh', connectionId };
 }
 
 function parentPathForMachine(targetPath: string, machine: MachineRef): string {
-  return machine.kind === 'ssh' ? path.posix.dirname(targetPath) : path.dirname(targetPath);
+  return machine.kind === 'local' ? path.dirname(targetPath) : path.posix.dirname(targetPath);
 }
 
 function cloneRepositoryErrorMessage(error: CloneRepositoryError): string {
