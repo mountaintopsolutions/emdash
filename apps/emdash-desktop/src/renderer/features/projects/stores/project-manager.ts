@@ -6,7 +6,7 @@ import { viewStateCache } from '@renderer/lib/stores/view-state-cache';
 import { log } from '@renderer/utils/logger';
 import { captureTelemetry } from '@renderer/utils/telemetryClient';
 import { sshConnectionEventChannel } from '@shared/core/ssh/sshEvents';
-import { type LocalProject, type SshProject } from '@shared/projects';
+import { type K8sProject, type LocalProject, type SshProject } from '@shared/projects';
 import { splitNameWithOwner } from '@shared/repository-ref';
 import type { ProjectViewSnapshot } from '@shared/view-state';
 import {
@@ -304,6 +304,9 @@ export class ProjectManagerStore {
               } else if (openResult.error.type === 'ssh-disconnected') {
                 current.error = openResult.error.connectionId;
                 current.errorCode = 'ssh-disconnected';
+              } else if (openResult.error.type === 'k8s-disconnected') {
+                current.error = openResult.error.connectionId;
+                current.errorCode = 'k8s-disconnected';
               } else {
                 current.error = openResult.error.message;
                 current.errorCode = undefined;
@@ -465,7 +468,7 @@ export class ProjectManagerStore {
     });
   }
 
-  private _setAndOpenProject(id: string, project: LocalProject | SshProject): void {
+  private _setAndOpenProject(id: string, project: LocalProject | SshProject | K8sProject): void {
     runInAction(() => {
       const current = this.projects.get(id);
       if (current) {
@@ -525,11 +528,13 @@ export class ProjectManagerStore {
     cloneUrl: string;
     repositoryNameWithOwner: string;
     githubAccountId?: string;
-  }): Promise<Result<LocalProject | SshProject, ProjectCreationError>> {
+  }): Promise<Result<LocalProject | SshProject | K8sProject, ProjectCreationError>> {
     const connectionId =
-      opts.projectType.type === 'ssh' ? opts.projectType.connectionId : undefined;
+      opts.projectType.type === 'ssh' || opts.projectType.type === 'k8s'
+        ? opts.projectType.connectionId
+        : undefined;
 
-    let result: Result<LocalProject | SshProject, ProjectCreationError>;
+    let result: Result<LocalProject | SshProject | K8sProject, ProjectCreationError>;
     try {
       this._updatePhase(opts.projectId, 'cloning');
       const cloneResult = await rpc.projectSetup.cloneRepository(
