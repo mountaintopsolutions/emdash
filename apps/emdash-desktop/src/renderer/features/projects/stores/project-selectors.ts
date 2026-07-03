@@ -1,5 +1,5 @@
 import { appState } from '@renderer/lib/stores/app-state';
-import type { LocalProject, SshProject } from '@shared/projects';
+import type { K8sProject, LocalProject, SshProject } from '@shared/projects';
 import type { GitRepositoryStore } from './git-repository-store';
 import type { PrSyncStore } from './pr-sync-store';
 import {
@@ -63,7 +63,7 @@ export function firstMountedProjectId(): string | undefined {
 
 export function mountedProjectData(
   store: ProjectStore | undefined
-): LocalProject | SshProject | null {
+): LocalProject | SshProject | K8sProject | null {
   return store?.mountedProject?.data ?? null;
 }
 
