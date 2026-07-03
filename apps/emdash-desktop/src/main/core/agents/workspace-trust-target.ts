@@ -10,7 +10,8 @@ import { createRemotePluginFs } from './remote-plugin-fs';
 
 export type WorkspaceTrustHost =
   | { kind: 'local'; homedir: string }
-  | { kind: 'ssh'; ctx: IExecutionContext; files: IFilesRuntime };
+  | { kind: 'ssh'; ctx: IExecutionContext; files: IFilesRuntime }
+  | { kind: 'k8s'; ctx: IExecutionContext; files: IFilesRuntime };
 
 export type TrustTarget = {
   fs: PluginFs;
