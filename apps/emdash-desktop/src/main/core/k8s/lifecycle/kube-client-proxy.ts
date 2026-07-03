@@ -64,6 +64,20 @@ export interface KubePtyHandle {
 }
 
 /**
+ * A live non-TTY exec session with separate stdin/stdout/stderr streams.
+ * Used by the ACP process host for JSON-RPC communication with agent CLIs.
+ */
+export interface KubeExecProcessHandle {
+  readonly stdin: Writable;
+  readonly stdout: PassThrough;
+  readonly stderr: PassThrough;
+  readonly exitCode: number | null;
+  onExit(cb: (code: number | null) => void): void;
+  onError(cb: (err: Error) => void): void;
+  kill(signal?: NodeJS.Signals): void;
+}
+
+/**
  * Stable reference to a Kubernetes exec transport that survives reconnects.
  *
  * Mirrors SshClientProxy: services hold a KubeClientProxy rather than a raw
@@ -545,6 +559,91 @@ export class KubeClientProxy {
           reject(error instanceof Error ? error : new Error(String(error)));
         });
     });
+  }
+
+  // ─── Streaming process execution (ACP) ────────────────────────────────────
+
+  /**
+   * Open a non-TTY exec session with separate stdin/stdout/stderr streams.
+   * Used by the ACP process host for JSON-RPC communication with agent CLIs:
+   * the clean stream framing (no terminal translation) is essential for
+   * structured protocol messages.
+   *
+   * Mirrors the SSH callback-style `proxy.exec(cmd, (err, channel) => ...)`
+   * which returns a bidirectional ClientChannel. Here, three PassThrough
+   * streams provide the same stdin/stdout/stderr separation.
+   */
+  execProcess(argv: string[]): KubeExecProcessHandle {
+    const { exec, target } = this.transport;
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let exitCode: number | null = null;
+    let socket: WebSocket | null = null;
+    const exitListeners: Array<(code: number | null) => void> = [];
+    const errorListeners: Array<(err: Error) => void> = [];
+    let settled = false;
+
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      this.reportChannelResult(err);
+      for (const cb of errorListeners) cb(err);
+    };
+
+    exec
+      .exec(
+        target.namespace,
+        target.podName,
+        target.containerName ?? '',
+        argv,
+        stdout,
+        stderr,
+        stdin,
+        false,
+        (status) => {
+          exitCode = exitCodeFromStatus(status);
+        }
+      )
+      .then((ws: WebSocket) => {
+        socket = ws;
+        const wsPing = ws as unknown as { ping?: () => void };
+        const keepAlive = setInterval(() => {
+          try {
+            wsPing.ping?.();
+          } catch {
+            // best-effort
+          }
+        }, PTY_KEEPALIVE_INTERVAL_MS);
+        ws.on('close', () => {
+          clearInterval(keepAlive);
+          if (settled) return;
+          settled = true;
+          for (const cb of exitListeners) cb(exitCode);
+        });
+        ws.on('error', (error: unknown) => {
+          clearInterval(keepAlive);
+          fail(error instanceof Error ? error : new Error(String(error)));
+        });
+      })
+      .catch((error: unknown) => {
+        fail(error instanceof Error ? error : new Error(String(error)));
+      });
+
+    return {
+      stdin,
+      stdout,
+      stderr,
+      get exitCode() {
+        return exitCode;
+      },
+      onExit: (cb) => exitListeners.push(cb),
+      onError: (cb) => errorListeners.push(cb),
+      kill: () => {
+        stdin.end();
+        socket?.close();
+      },
+    };
   }
 
   // ─── Interactive (PTY) execution ───────────────────────────────────────────
