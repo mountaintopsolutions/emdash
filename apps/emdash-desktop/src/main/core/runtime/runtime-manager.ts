@@ -14,11 +14,14 @@ import type { Lease } from '@emdash/shared';
 import { appScope } from '@main/app/app-scope';
 import { getDependencyManager } from '@main/core/dependencies/dependency-managers';
 import { NON_INTERACTIVE_GIT_ENV } from '@main/core/execution-context/non-interactive-git-env';
+import { kubeConnectionManager } from '@main/core/k8s/lifecycle/production-kube-connection-manager';
 import { sshConnectionManager } from '@main/core/ssh/lifecycle/production-ssh-connection-manager';
 import { getGitExecutable } from '@main/core/utils/exec';
 import { log } from '@main/lib/logger';
 import { desktopWorkerPath } from '@main/worker-manifest';
 import { ConstantHealthSource } from './health';
+import { LegacyK8sFilesRuntime } from './legacy/k8s-files';
+import { LegacyK8sGitRuntime } from './legacy/k8s-git';
 import { LegacySshFilesRuntime } from './legacy/ssh-files';
 import { LegacySshGitRuntime } from './legacy/ssh-git';
 import {
@@ -137,11 +140,32 @@ class SshMachineRuntime implements MachineRuntime {
   }
 }
 
+class K8sMachineRuntime implements MachineRuntime {
+  readonly machine: MachineRef;
+  readonly files: LegacyK8sFilesRuntime;
+  readonly git: LegacyK8sGitRuntime;
+  readonly health = new ConstantHealthSource();
+
+  constructor(
+    connectionId: string,
+    proxy: Awaited<ReturnType<typeof kubeConnectionManager.connect>>
+  ) {
+    this.machine = { kind: 'k8s', connectionId };
+    this.files = new LegacyK8sFilesRuntime(proxy);
+    this.git = new LegacyK8sGitRuntime(proxy, connectionId);
+  }
+
+  async dispose(): Promise<void> {
+    await this.files.dispose();
+    await this.git.dispose();
+  }
+}
+
 async function probeGitDependency(machine: MachineRef): Promise<void> {
   try {
-    const manager = await getDependencyManager(
-      machine.kind === 'ssh' ? machine.connectionId : undefined
-    );
+    const connectionId =
+      machine.kind === 'ssh' || machine.kind === 'k8s' ? machine.connectionId : undefined;
+    const manager = await getDependencyManager(connectionId);
     await manager.probe('git');
   } catch (error) {
     log.warn('RuntimeManager: Git dependency probe failed', {
@@ -162,6 +186,10 @@ class DefaultRuntimeManager implements RuntimeManager {
     return this.runtimes.acquire(machineKey(machine), async () => {
       await probeGitDependency(machine);
       if (machine.kind === 'local') return new LocalMachineRuntime();
+      if (machine.kind === 'k8s') {
+        const proxy = await kubeConnectionManager.connect(machine.connectionId);
+        return new K8sMachineRuntime(machine.connectionId, proxy);
+      }
       const proxy = await sshConnectionManager.connect(machine.connectionId);
       return new SshMachineRuntime(machine.connectionId, proxy);
     });
