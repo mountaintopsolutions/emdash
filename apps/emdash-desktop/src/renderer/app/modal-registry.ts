@@ -16,6 +16,7 @@ import { CreatePrModal } from '@renderer/features/tasks/diff-view/changes-panel/
 import { ConflictDialog } from '@renderer/features/tasks/editor/conflict-dialog';
 import { RenameTaskModal } from '@renderer/features/tasks/rename-task-modal';
 import { AddSshConnModal } from '@renderer/lib/components/add-ssh-conn-modal';
+import { AddK8sConnModal } from '@renderer/lib/components/add-k8s-conn-modal';
 import { ChangeProjectConnectionModal } from '@renderer/lib/components/change-project-connection-modal';
 import { ConfirmActionDialog } from '@renderer/lib/components/confirm-action-dialog';
 import { ExternalLinkChoiceDialog } from '@renderer/lib/components/external-link-choice-dialog';
@@ -46,6 +47,7 @@ export const modalRegistry = {
   taskModal: createModal(CreateTaskModal, { ignoreOutsidePressAfterWindowBlur: true }),
   addProjectModal: createModal(AddProjectModal),
   addSshConnModal: createModal(AddSshConnModal),
+  addK8sConnModal: createModal(AddK8sConnModal),
   changeProjectConnectionModal: createModal(ChangeProjectConnectionModal, { size: 'sm' }),
   githubDeviceFlowModal: createModal(GithubDeviceFlowModal, { size: 'md' }),
   confirmActionModal: createModal(ConfirmActionDialog, { size: 'xs' }),

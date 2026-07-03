@@ -13,6 +13,7 @@ import NotificationSettingsCard from './NotificationSettingsCard';
 import RepositorySettingsCard from './RepositorySettingsCard';
 import ResourceMonitorSettingsCard from './ResourceMonitorSettingsCard';
 import SidebarMetadataSettingsCard from './SidebarMetadataSettingsCard';
+import { K8sConnectionsSettingsCard } from './K8sConnectionsSettingsCard';
 import { SshConnectionsSettingsCard } from './SshConnectionsSettingsCard';
 import { StorageSettingsPage } from './StorageSettingsPage';
 import {
@@ -93,9 +94,10 @@ function ConnectionsSettingsPage() {
       <PageHeader
         sticky
         title="Connections"
-        description="Manage reusable SSH connections for remote projects."
+        description="Manage reusable SSH and Kubernetes connections for remote projects."
       />
       <SshConnectionsSettingsCard />
+      <K8sConnectionsSettingsCard />
     </div>
   );
 }
