@@ -20,7 +20,16 @@ export type BrowseSshDirectoryParams = {
   connectionId: string;
 };
 
-export type BrowseDirectoryParams = BrowseLocalDirectoryParams | BrowseSshDirectoryParams;
+export type BrowseK8sDirectoryParams = {
+  type: 'k8s';
+  path: string;
+  connectionId: string;
+};
+
+export type BrowseDirectoryParams =
+  | BrowseLocalDirectoryParams
+  | BrowseSshDirectoryParams
+  | BrowseK8sDirectoryParams;
 
 export type DirectoryEntry = {
   path: string;

@@ -68,6 +68,7 @@ export async function browseDirectory(
 
 function machineForDirectory(params: BrowseDirectoryParams): MachineRef {
   if (params.type === 'local') return { kind: 'local' };
+  if (params.type === 'k8s') return { kind: 'k8s', connectionId: params.connectionId };
   return { kind: 'ssh', connectionId: params.connectionId };
 }
 
