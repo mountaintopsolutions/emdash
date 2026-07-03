@@ -97,12 +97,16 @@ export class ProjectManagerStore {
     data: ModeData,
     options: StartProjectCreationOptions = {}
   ): Promise<StartProjectCreationResult> {
-    const isSsh = projectType.type === 'ssh';
+    const isRemote = projectType.type === 'ssh' || projectType.type === 'k8s';
     const projectId = options.id ?? crypto.randomUUID();
     const targetPath = data.mode === 'pick' ? data.path : `${data.path}/${data.name}`;
     const inspection = await rpc.projects.inspectProjectPath(
-      isSsh
-        ? { type: 'ssh', path: targetPath, connectionId: projectType.connectionId }
+      isRemote
+        ? {
+            type: projectType.type as 'ssh' | 'k8s',
+            path: targetPath,
+            connectionId: projectType.connectionId,
+          }
         : { type: 'local', path: targetPath }
     );
     if (inspection.existingProject) {
@@ -132,8 +136,10 @@ export class ProjectManagerStore {
     projectId: string,
     targetPath: string
   ): Promise<ProjectCreationCompletion> {
-    const isSsh = projectType.type === 'ssh';
-    const projectTelemetryType: 'local' | 'ssh' = isSsh ? 'ssh' : 'local';
+    const isRemote = projectType.type === 'ssh' || projectType.type === 'k8s';
+    const projectTelemetryType: 'local' | 'ssh' | 'k8s' = isRemote
+      ? (projectType.type as 'ssh' | 'k8s')
+      : 'local';
     const projectTelemetryStrategy: 'open' | 'create' | 'clone' =
       data.mode === 'clone' ? 'clone' : data.mode === 'new' ? 'create' : 'open';
 
@@ -141,23 +147,22 @@ export class ProjectManagerStore {
     try {
       switch (data.mode) {
         case 'pick': {
-          const projectResult =
-            projectType.type === 'ssh'
-              ? await rpc.projects.createProject({
-                  type: 'ssh',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  connectionId: projectType.connectionId,
-                  initGitRepository: data.initGitRepository,
-                })
-              : await rpc.projects.createProject({
-                  type: 'local',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  initGitRepository: data.initGitRepository,
-                });
+          const projectResult = isRemote
+            ? await rpc.projects.createProject({
+                type: projectType.type as 'ssh' | 'k8s',
+                id: projectId,
+                path: targetPath,
+                name: data.name,
+                connectionId: projectType.connectionId,
+                initGitRepository: data.initGitRepository,
+              })
+            : await rpc.projects.createProject({
+                type: 'local',
+                id: projectId,
+                path: targetPath,
+                name: data.name,
+                initGitRepository: data.initGitRepository,
+              });
           if (!projectResult.success) {
             result = err(projectResult.error);
             break;
@@ -173,7 +178,7 @@ export class ProjectManagerStore {
         }
 
         case 'clone': {
-          const connectionId = projectType.type === 'ssh' ? projectType.connectionId : undefined;
+          const connectionId = isRemote ? projectType.connectionId : undefined;
           const cloneResult = await rpc.projectSetup.cloneRepository(
             data.repositoryUrl,
             targetPath,
@@ -188,21 +193,20 @@ export class ProjectManagerStore {
           }
 
           this._updatePhase(projectId, 'registering');
-          const projectResult =
-            projectType.type === 'ssh'
-              ? await rpc.projects.createProject({
-                  type: 'ssh',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                  connectionId: projectType.connectionId,
-                })
-              : await rpc.projects.createProject({
-                  type: 'local',
-                  id: projectId,
-                  path: targetPath,
-                  name: data.name,
-                });
+          const projectResult = isRemote
+            ? await rpc.projects.createProject({
+                type: projectType.type as 'ssh' | 'k8s',
+                id: projectId,
+                path: targetPath,
+                name: data.name,
+                connectionId: projectType.connectionId,
+              })
+            : await rpc.projects.createProject({
+                type: 'local',
+                id: projectId,
+                path: targetPath,
+                name: data.name,
+              });
           if (!projectResult.success) {
             result = err(projectResult.error);
             break;
@@ -561,9 +565,9 @@ export class ProjectManagerStore {
         } else {
           this._updatePhase(opts.projectId, 'registering');
           result =
-            opts.projectType.type === 'ssh'
+            opts.projectType.type === 'ssh' || opts.projectType.type === 'k8s'
               ? await rpc.projects.createProject({
-                  type: 'ssh',
+                  type: opts.projectType.type as 'ssh' | 'k8s',
                   id: opts.projectId,
                   path: opts.targetPath,
                   name: opts.name,

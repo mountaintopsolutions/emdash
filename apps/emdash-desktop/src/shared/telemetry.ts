@@ -80,7 +80,11 @@ export type TelemetryEventProperties = {
     error_code?: string;
   };
 
-  project_added: { type: 'local' | 'ssh'; strategy: 'open' | 'create' | 'clone'; success: boolean };
+  project_added: {
+    type: 'local' | 'ssh' | 'k8s';
+    strategy: 'open' | 'create' | 'clone';
+    success: boolean;
+  };
   project_deleted: EmptyProps;
 
   task_created: {
