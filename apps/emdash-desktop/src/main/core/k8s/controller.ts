@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { clearDependencyManager } from '@main/core/dependencies/dependency-managers';
-import { K8sFileSystem } from '@main/core/fs/impl/k8s-fs';
+import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
 import { db } from '@main/db/client';
 import {
   k8sConnections as k8sConnectionsTable,
