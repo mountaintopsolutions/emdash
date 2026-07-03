@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '@emdash/shared';
 import {
   buildRemoteShellCommand,
+  FALLBACK_REMOTE_SHELL_PROFILE,
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
@@ -87,7 +88,7 @@ export async function openK8sPty(
 ): Promise<Result<K8sPtySession, K8sPtyOpenError>> {
   const { id, command, cols, rows } = options;
   try {
-    const fullCommand = buildRemoteShellCommand(profile, command);
+    const fullCommand = buildRemoteShellCommand(profile ?? FALLBACK_REMOTE_SHELL_PROFILE, command);
     const handle = proxy.execPty(['/bin/sh', '-c', fullCommand], { cols, rows });
     return ok(new K8sPtySession(id, handle));
   } catch (e) {

@@ -97,7 +97,7 @@ describe.runIf(LIVE)('k8s live transport smoke', () => {
     return proxy;
   }
 
-  it('writes, reads, searches, and removes files via K8sFileSystem', async () => {
+  it('writes, reads, globs, and removes files via K8sFileSystem', async () => {
     const proxy = await connect();
     const dir = '/tmp/emdash-k8s-fs-smoke';
     const fs = new K8sFileSystem(proxy, dir);
@@ -108,10 +108,10 @@ describe.runIf(LIVE)('k8s live transport smoke', () => {
     const read = await fs.read('hello.txt');
     expect(read.content).toContain('k8s-roundtrip-marker');
 
-    const search = await fs.search('k8s-roundtrip-marker');
+    const matches = await fs.glob('hello.txt', { cwd: '/', dot: false });
     // eslint-disable-next-line no-console
-    console.log('[smoke] search matches:', search.matches.length);
-    expect(search.matches.length).toBeGreaterThan(0);
+    console.log('[smoke] glob matches:', matches.length);
+    expect(matches.length).toBeGreaterThan(0);
 
     const removed = await fs.remove('hello.txt');
     expect(removed.success).toBe(true);

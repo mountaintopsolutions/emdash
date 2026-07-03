@@ -6,7 +6,7 @@ import {
   type RemoteShellProfile,
 } from '@main/core/ssh/lifecycle/remote-shell-profile';
 import type { SshClientProxy } from '@main/core/ssh/lifecycle/ssh-client-proxy';
-import type { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
+import { KubeClientProxy } from '@main/core/k8s/lifecycle/kube-client-proxy';
 import { quoteShellArg } from '@main/utils/shellEscape';
 import {
   isRuntimeTerminalShellId,

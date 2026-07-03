@@ -31,15 +31,15 @@ class AcpProcessHostManagerImpl implements AcpProcessHostManager {
     const cached = this.remoteHosts.get(key);
     if (cached) return cached;
 
-    const proxy =
-      machine.kind === 'k8s'
-        ? await kubeConnectionManager.connect(machine.connectionId)
-        : await sshConnectionManager.connect(machine.connectionId);
+    if (machine.kind === 'k8s') {
+      const proxy = await kubeConnectionManager.connect(machine.connectionId);
+      const host = new LegacyK8sAcpProcessHost(proxy);
+      this.remoteHosts.set(key, host);
+      return host;
+    }
 
-    const host =
-      machine.kind === 'k8s'
-        ? new LegacyK8sAcpProcessHost(proxy)
-        : new LegacySshAcpProcessHost(proxy);
+    const proxy = await sshConnectionManager.connect(machine.connectionId);
+    const host = new LegacySshAcpProcessHost(proxy);
     this.remoteHosts.set(key, host);
     return host;
   }
