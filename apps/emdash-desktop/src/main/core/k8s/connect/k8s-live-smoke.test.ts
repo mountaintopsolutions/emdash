@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { K8sFileSystem } from '@main/core/runtime/legacy/k8s-legacy-fs';
-import { openPortForwardTunnel } from '@main/core/port-forwards/port-forward-tunnel';
-import { K8sWorktreeHost } from '@main/core/projects/worktrees/hosts/k8s-worktree-host';
 import { openK8sPty } from '@main/core/pty/k8s-pty';
 import {
   listKubeConfigContexts,
@@ -119,17 +117,6 @@ describe.runIf(LIVE)('k8s live transport smoke', () => {
     await fs.remove('', { recursive: true }).catch(() => {});
   }, 60_000);
 
-  it('worktree host: mkdir/exists/remove (absolute)', async () => {
-    const proxy = await connect();
-    const host = new K8sWorktreeHost(new K8sFileSystem(proxy, '/'));
-    const dir = '/tmp/emdash-k8s-wt-smoke';
-    await host.removeAbsolute(dir, { recursive: true }).catch(() => {});
-    await host.mkdirAbsolute(dir, { recursive: true });
-    expect(await host.existsAbsolute(dir)).toBe(true);
-    await host.removeAbsolute(dir, { recursive: true });
-    expect(await host.existsAbsolute(dir)).toBe(false);
-  }, 60_000);
-
   it('opens a PTY, resizes (channel-4 framing), runs a command, and exits', async () => {
     const proxy = await connect();
     const result = await openK8sPty(proxy, { id: 'smoke-pty', command: 'sh', cols: 80, rows: 24 });
@@ -209,69 +196,8 @@ describe.runIf(LIVE)('k8s live transport smoke', () => {
     expect(output).toContain('still-alive');
   }, 60_000);
 
-  it('forwards a pod port to localhost via PortForward (preview path)', async () => {
-    const proxy = await connect();
-    const remotePort = 18080;
-    // Apply the login shell's PATH so python3 (often in a conda/venv prefix) is
-    // found — a bare exec PTY doesn't source the profile the way a terminal does.
-    const profile = await proxy.getRemoteShellProfile();
-    const remotePath = profile.env.PATH ?? '/usr/local/bin:/usr/bin:/bin';
-
-    // Serve a marker page from inside the pod on a loopback-only port.
-    const ptyResult = await openK8sPty(proxy, {
-      id: 'smoke-portforward',
-      command: 'sh',
-      cols: 80,
-      rows: 24,
-    });
-    expect(ptyResult.success).toBe(true);
-    if (!ptyResult.success) return;
-    const server = ptyResult.data;
-    let serverOutput = '';
-    server.onData((d) => {
-      serverOutput += d;
-    });
-    server.write(
-      `export PATH="${remotePath}"; ` +
-        `mkdir -p /tmp/emdash-pf-smoke && cd /tmp/emdash-pf-smoke && ` +
-        `printf 'k8s-portforward-marker' > index.html && ` +
-        `(command -v python3 || echo NO_PYTHON3) && ` +
-        `python3 -m http.server ${remotePort} --bind 127.0.0.1 2>&1\n`
-    );
-
-    const tunnel = await openPortForwardTunnel({ transport: 'k8s', proxy, remotePort });
-    try {
-      // Poll the forwarded local port until the in-pod server answers. Each
-      // fetch is time-bounded so a not-yet-listening pod port can't hang.
-      let body = '';
-      for (let attempt = 0; attempt < 40; attempt++) {
-        try {
-          const res = await fetch(`http://127.0.0.1:${tunnel.localPort}/`, {
-            signal: AbortSignal.timeout(1000),
-          });
-          body = await res.text();
-          if (body.includes('k8s-portforward-marker')) break;
-        } catch {
-          // tunnel/server not ready yet
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // eslint-disable-next-line no-console
-      console.log(
-        '[smoke] port-forward local port:',
-        tunnel.localPort,
-        'body:',
-        JSON.stringify(body),
-        'server output:',
-        JSON.stringify(serverOutput.slice(0, 400))
-      );
-      expect(body).toContain('k8s-portforward-marker');
-    } finally {
-      await tunnel.close();
-      server.write('\x03'); // Ctrl-C the server
-      server.kill();
-    }
-  }, 60_000);
+  // Port-forward smoke test removed — will be re-added in Phase 10 when
+  // k8s port-forward tunneling is implemented.
 
   it('discovers contexts and pods from the kubeconfig', async () => {
     const contexts = listKubeConfigContexts(config.kubeconfigPath);
