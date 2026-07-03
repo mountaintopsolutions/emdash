@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
+import { clearDependencyManager } from '@main/core/dependencies/dependency-managers';
 import { K8sFileSystem } from '@main/core/fs/impl/k8s-fs';
 import { db } from '@main/db/client';
 import {
@@ -187,6 +188,7 @@ export const k8sController = createRPCController({
       throw new Error(`Kubernetes connection is used by ${projectNames}`);
     }
 
+    clearDependencyManager(id);
     if (kubeConnectionManager.getConnectionState(id) !== 'disconnected') {
       await kubeConnectionManager.disconnect(id).catch((e) => {
         log.warn('k8sController.deleteConnection: error disconnecting', {
@@ -208,6 +210,7 @@ export const k8sController = createRPCController({
 
   /** Intentionally close a connection and stop auto-reconnect. */
   disconnect: async (connectionId: string): Promise<void> => {
+    clearDependencyManager(connectionId);
     await kubeConnectionManager.disconnect(connectionId);
   },
 

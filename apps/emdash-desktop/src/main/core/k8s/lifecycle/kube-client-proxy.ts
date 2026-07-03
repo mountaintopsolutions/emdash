@@ -228,20 +228,48 @@ export class KubeClientProxy {
    * bytes the buffered, UTF-8 `exec()` path would corrupt.
    *
    * `remotePath` is an absolute POSIX path inside the container.
+   *
+   * `maxBytes`, when set, caps how many bytes are accumulated (and transferred)
+   * — once enough bytes have arrived the exec WebSocket is closed so a huge file
+   * is never buffered or transferred in full. The resolved buffer is at most
+   * `maxBytes` long. Mirrors the size-bounded reads the SSH filesystem performs
+   * via SFTP streaming.
    */
-  async readFileBytes(remotePath: string): Promise<Buffer> {
+  async readFileBytes(remotePath: string, maxBytes?: number): Promise<Buffer> {
     const { exec, target } = this.transport;
     const argv = ['cat', remotePath];
 
     return new Promise<Buffer>((resolve, reject) => {
       const chunks: Buffer[] = [];
+      let accumulated = 0;
       let settled = false;
       let exitCode = 0;
       let statusSeen = false;
+      let socket: WebSocket | null = null;
+      let capped = false;
 
       const stdoutStream = new Writable({
         write(chunk: Buffer, _encoding, done) {
+          if (capped) {
+            done();
+            return;
+          }
+          // Once we've hit the cap, trim the trailing bytes, stop accepting,
+          // and tear down the exec stream so the rest of a large file is
+          // neither transferred nor buffered.
+          if (maxBytes !== undefined && accumulated + chunk.length >= maxBytes) {
+            const remaining = maxBytes - accumulated;
+            if (remaining > 0) {
+              chunks.push(Buffer.from(chunk.subarray(0, remaining)));
+              accumulated = maxBytes;
+            }
+            capped = true;
+            socket?.close();
+            done();
+            return;
+          }
           chunks.push(Buffer.from(chunk));
+          accumulated += chunk.length;
           done();
         },
       });
@@ -250,6 +278,17 @@ export class KubeClientProxy {
           done();
         },
       });
+
+      const finish = (result: Buffer | Error) => {
+        if (settled) return;
+        settled = true;
+        if (result instanceof Error) {
+          this.reportChannelResult(result);
+          reject(result);
+          return;
+        }
+        resolve(result);
+      };
 
       exec
         .exec(
@@ -266,28 +305,24 @@ export class KubeClientProxy {
             exitCode = exitCodeFromStatus(status);
           }
         )
-        .then((socket: WebSocket) => {
-          socket.on('close', () => {
-            if (settled) return;
-            settled = true;
+        .then((ws: WebSocket) => {
+          socket = ws;
+          // If the cap was reached before the socket was assigned, close it now
+          // so the pod stops streaming the remainder.
+          if (capped) ws.close();
+          ws.on('close', () => {
             if (statusSeen && exitCode !== 0) {
-              reject(new Error(`Failed to read ${remotePath} (exit code ${exitCode})`));
+              finish(new Error(`Failed to read ${remotePath} (exit code ${exitCode})`));
               return;
             }
-            resolve(Buffer.concat(chunks));
+            finish(Buffer.concat(chunks));
           });
-          socket.on('error', (error: unknown) => {
-            if (settled) return;
-            settled = true;
-            this.reportChannelResult(error);
-            reject(error instanceof Error ? error : new Error(String(error)));
+          ws.on('error', (error: unknown) => {
+            finish(error instanceof Error ? error : new Error(String(error)));
           });
         })
         .catch((error: unknown) => {
-          if (settled) return;
-          settled = true;
-          this.reportChannelResult(error);
-          reject(error instanceof Error ? error : new Error(String(error)));
+          finish(error instanceof Error ? error : new Error(String(error)));
         });
     });
   }

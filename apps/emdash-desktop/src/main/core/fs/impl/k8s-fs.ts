@@ -241,7 +241,7 @@ export class K8sFileSystem implements FileSystemProvider {
     }
 
     const fullPath = this.resolveRemotePath(path);
-    const buffer = await this.proxy.readFileBytes(fullPath);
+    const buffer = await this.proxy.readFileBytes(fullPath, readSize);
     const slice = buffer.subarray(0, readSize);
 
     return {
@@ -610,7 +610,9 @@ export class K8sFileSystem implements FileSystemProvider {
     const fullPath = this.resolveRemotePath(path);
     let buffer: Buffer;
     try {
-      buffer = await this.proxy.readFileBytes(fullPath);
+      // Pass the size cap so a file that grew between stat and read can't
+      // trigger an unbounded buffer.
+      buffer = await this.proxy.readFileBytes(fullPath, maxImageSize);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
