@@ -28,7 +28,7 @@ export class MountedProject {
   readonly settings: ProjectSettingsStore;
   readonly gitRepository: GitRepositoryStore;
   readonly prSync: PrSyncStore;
-  readonly data: LocalProject | SshProject;
+  readonly data: LocalProject | SshProject | K8sProject;
 
   private _snapshotDisposer: (() => void) | null = null;
 
@@ -39,7 +39,7 @@ export class MountedProject {
     };
   }
 
-  constructor(data: LocalProject | SshProject, savedSnapshot?: ProjectViewSnapshot) {
+  constructor(data: LocalProject | SshProject | K8sProject, savedSnapshot?: ProjectViewSnapshot) {
     this.data = data;
     this.view = new ProjectViewStore();
     this.settings = new ProjectSettingsStore(data.id);
@@ -79,7 +79,7 @@ export class ProjectStore {
   state: 'unregistered' | 'unmounted' | 'mounted';
   id: string;
   name: string | null;
-  data: LocalProject | SshProject | null;
+  data: LocalProject | SshProject | K8sProject | null;
   createdAt: string;
   phase: UnregisteredProjectPhase | UnmountedProjectPhase | null;
   error: string | undefined = undefined;
@@ -91,7 +91,7 @@ export class ProjectStore {
     state: ProjectStore['state'],
     id: string,
     name: string | null,
-    data: LocalProject | SshProject | null,
+    data: LocalProject | SshProject | K8sProject | null,
     phase: UnregisteredProjectPhase | UnmountedProjectPhase | null,
     mode: ProjectMode | null = null
   ) {
@@ -105,7 +105,7 @@ export class ProjectStore {
     makeAutoObservable(this, { mountedProject: observable.ref });
   }
 
-  transitionToMounted(data: LocalProject | SshProject, savedSnapshot?: ProjectViewSnapshot): void {
+  transitionToMounted(data: LocalProject | SshProject | K8sProject, savedSnapshot?: ProjectViewSnapshot): void {
     this.mountedProject = new MountedProject(data, savedSnapshot);
     this.data = data;
     this.id = data.id;
@@ -118,7 +118,7 @@ export class ProjectStore {
   }
 
   transitionToUnmounted(
-    data: LocalProject | SshProject | K8sProject,
+    data: LocalProject | SshProject | K8sProject | K8sProject,
     phase: UnmountedProjectPhase = 'opening'
   ): void {
     this.mountedProject?.dispose();
@@ -162,7 +162,7 @@ export type UnregisteredProject = ProjectStore & {
 
 export type UnmountedProject = ProjectStore & {
   state: 'unmounted';
-  data: LocalProject | SshProject;
+  data: LocalProject | SshProject | K8sProject;
   phase: UnmountedProjectPhase;
   error: string | undefined;
   errorCode: 'path-not-found' | 'ssh-disconnected' | 'k8s-disconnected' | undefined;
@@ -179,7 +179,7 @@ export function isUnmountedProject(p: ProjectStore): p is UnmountedProject {
 export function isMountedProject(p: ProjectStore): p is ProjectStore & {
   state: 'mounted';
   mountedProject: MountedProject;
-  data: LocalProject | SshProject;
+  data: LocalProject | SshProject | K8sProject;
 } {
   return p.state === 'mounted';
 }
@@ -194,7 +194,7 @@ export function createUnregisteredProject(
 }
 
 export function createUnmountedProject(
-  data: LocalProject | SshProject | K8sProject,
+  data: LocalProject | SshProject | K8sProject | K8sProject,
   phase: UnmountedProjectPhase = 'opening'
 ): ProjectStore {
   return new ProjectStore('unmounted', data.id, data.name, data, phase);
