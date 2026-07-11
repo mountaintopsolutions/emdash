@@ -43,7 +43,7 @@ export async function deleteTask(
   let wsRow:
     | {
         id: string;
-        type: 'local' | 'project-ssh' | 'byoi' | null;
+        type: 'local' | 'project-ssh' | 'project-k8s' | 'byoi' | null;
         kind: 'worktree' | 'project-root' | 'byoi' | null;
         location: 'local' | 'remote' | null;
         path: string | null;
